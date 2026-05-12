@@ -11,16 +11,25 @@ $targetDate = ($parsedDate && $parsedDate->format('Y-m-d') === $requestedDate)
 
 try {
     $conn = getDBConnection();
+    $wfh_column_check = $conn->query("SHOW COLUMNS FROM attendance LIKE 'is_wfh'");
+    if ($wfh_column_check === false || $wfh_column_check->num_rows === 0) {
+        $conn->query("ALTER TABLE attendance ADD COLUMN is_wfh TINYINT(1) NOT NULL DEFAULT 0 AFTER time_out");
+    }
+    if ($wfh_column_check !== false) {
+        $wfh_column_check->free();
+    }
 
     $query = "SELECT
         e.id,
         e.employee_name,
         a.time_in,
+        a.is_wfh,
         a.status AS attendance_status,
         CASE
             WHEN a.status = 'absent' THEN 'absent'
             WHEN a.status = 'offset' THEN 'offset'
             WHEN a.status = 'leave' THEN 'leave'
+            WHEN a.status = 'ob' THEN 'ob'
             WHEN a.status = 'holiday' THEN 'holiday'
             WHEN a.status = 'suspended' THEN 'suspended'
             WHEN a.time_in IS NOT NULL AND a.time_in <> '' AND (HOUR(a.time_in) > 8 OR (HOUR(a.time_in) = 8 AND MINUTE(a.time_in) > 0)) THEN 'late'
@@ -38,10 +47,11 @@ try {
             WHEN a.time_in IS NOT NULL AND a.time_in <> '' THEN 0
             WHEN a.status = 'offset' THEN 1
             WHEN a.status = 'leave' THEN 2
-            WHEN a.status = 'holiday' THEN 3
-            WHEN a.status = 'suspended' THEN 4
-            WHEN a.status = 'absent' THEN 5
-            ELSE 6
+            WHEN a.status = 'ob' THEN 3
+            WHEN a.status = 'holiday' THEN 4
+            WHEN a.status = 'suspended' THEN 5
+            WHEN a.status = 'absent' THEN 6
+            ELSE 7
         END,
         a.time_in ASC,
         e.employee_name ASC";
@@ -57,6 +67,7 @@ try {
             'id' => (int) $row['id'],
             'name' => $row['employee_name'],
             'time_in' => $row['time_in'],
+            'is_wfh' => (int)($row['is_wfh'] ?? 0),
             'status' => $row['public_status'],
             'attendance_status' => $row['attendance_status']
         ];

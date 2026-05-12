@@ -8,6 +8,13 @@ $today = date('Y-m-d');
 
 try {
     $conn = getDBConnection();
+    $wfh_column_check = $conn->query("SHOW COLUMNS FROM attendance LIKE 'is_wfh'");
+    if ($wfh_column_check === false || $wfh_column_check->num_rows === 0) {
+        $conn->query("ALTER TABLE attendance ADD COLUMN is_wfh TINYINT(1) NOT NULL DEFAULT 0 AFTER time_out");
+    }
+    if ($wfh_column_check !== false) {
+        $wfh_column_check->free();
+    }
     
     // Check if tasks table exists, if not create it
     $table_check = $conn->query("SHOW TABLES LIKE 'tasks'");
@@ -37,14 +44,14 @@ try {
         e.id,
         e.employee_name,
         a.time_in,
+        a.is_wfh,
         a.status as attendance_status,
         CASE 
             WHEN a.status = 'absent' THEN 'absent'
-            WHEN a.time_in IS NOT NULL AND (HOUR(a.time_in) > 8 OR (HOUR(a.time_in) = 8 AND MINUTE(a.time_in) > 0)) THEN 'late'
+            WHEN a.status IN ('offset', 'leave', 'ob', 'holiday', 'suspended') THEN a.status
             WHEN a.status = 'late' THEN 'late'
+            WHEN a.time_in IS NOT NULL AND (HOUR(a.time_in) > 8 OR (HOUR(a.time_in) = 8 AND MINUTE(a.time_in) > 0)) THEN 'late'
             WHEN a.status = 'present' AND a.time_in IS NOT NULL THEN 'present'
-            WHEN a.status = 'offset' THEN 'offset'
-            WHEN a.status = 'leave' THEN 'leave'
             ELSE 'not_checked_in'
         END as actual_status
         FROM employees e
@@ -67,13 +74,15 @@ try {
     $checkedInCount = 0;
     $absentCount = 0;
     $absentEmployees = [];
+    $statusEmployees = [];
     $notCheckedIn = [];
     
     while ($row = $result->fetch_assoc()) {
         $hasCheckedIn = !empty($row['time_in']);
         $isAbsent = ($row['attendance_status'] === 'absent' || $row['actual_status'] === 'absent');
+        $isStatusOnly = in_array($row['actual_status'], ['offset', 'leave', 'ob', 'holiday', 'suspended'], true);
         
-        if ($hasCheckedIn) {
+        if ($hasCheckedIn && !$isStatusOnly) {
             $checkedInCount++;
         }
         
@@ -104,12 +113,15 @@ try {
             'id' => (int)$row['id'],
             'name' => $row['employee_name'],
             'time_in' => $row['time_in'],
+            'is_wfh' => (int)($row['is_wfh'] ?? 0),
             'status' => $row['actual_status'] ?: ($isAbsent ? 'absent' : 'not_checked_in'),
             'tasks' => $tasks
         ];
         
         if ($isAbsent) {
             $absentEmployees[] = $employee_data;
+        } elseif ($isStatusOnly) {
+            $statusEmployees[] = $employee_data;
         } elseif ($hasCheckedIn) {
             $employees[] = $employee_data;
         } else {
@@ -117,8 +129,8 @@ try {
         }
     }
     
-    // Combine all employees: checked in, absent, and not checked in
-    $allEmployees = array_merge($employees, $absentEmployees, $notCheckedIn);
+    // Combine all employees: checked in, status-only records, absent, and not checked in
+    $allEmployees = array_merge($employees, $statusEmployees, $absentEmployees, $notCheckedIn);
     
     $stmt->close();
     $conn->close();
@@ -130,6 +142,7 @@ try {
         'absent_count' => $absentCount,
         'total_employees' => count($allEmployees),
         'employees' => $allEmployees,
+        'status_employees' => $statusEmployees,
         'absent_employees' => $absentEmployees
     ]);
     

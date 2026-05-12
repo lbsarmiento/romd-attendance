@@ -58,16 +58,19 @@ include 'includes/header.php';
         </div>
         
         <!-- Time-in Report Preview Modal -->
-        <div id="reportPreviewModal" class="modal" style="display: none;">
-            <div class="modal-content" style="max-width: 600px;">
+        <div id="reportPreviewModal" class="modal report-preview-modal" style="display: none;">
+            <div class="modal-content report-preview-content">
                 <div class="modal-header">
-                    <h3>📋 Time-in Report (Preview)</h3>
+                    <div>
+                        <span class="modal-kicker">Daily Copy Report</span>
+                        <h3>Time-in Report Preview</h3>
+                    </div>
                     <span class="close" onclick="closeReportPreview()">&times;</span>
                 </div>
                 <div class="modal-body">
-                    <p style="margin-bottom: 10px; color: #666; font-size: 14px;">Copy this text to share today's time-in and absent list.</p>
-                    <textarea id="reportPreviewText" readonly style="width: 100%; min-height: 320px; font-family: Consolas, monospace; font-size: 13px; padding: 12px; border: 1px solid #ddd; border-radius: 6px; resize: vertical;"></textarea>
-                    <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <p class="report-preview-help">Copy this text to share today's time-in, attendance statuses, and not-yet-time-in list.</p>
+                    <textarea id="reportPreviewText" class="report-preview-text" readonly></textarea>
+                    <div class="report-preview-actions">
                         <button type="button" id="copyReportBtn" class="btn btn-primary" onclick="copyReportToClipboard()">Copy to clipboard</button>
                         <button type="button" class="btn btn-secondary" onclick="closeReportPreview()">Close</button>
                     </div>
@@ -111,71 +114,193 @@ include 'includes/header.php';
             </div>
         </div>
         
-        <div class="month-year-selector">
-            <div class="selector-header">
-                <h2>Select Month & Year</h2>
-                <p>Click on a month to view attendance records for that period</p>
-                <div class="selector-actions selector-actions-primary">
-                    <a href="early_bird.php" class="btn btn-primary">🐦 Early Bird / Early Time-In Report</a>
-                    <a href="first_arrival.php" class="btn btn-primary">🥇 First to Arrive (Monthly)</a>
-                    <a href="employee_summary.php" class="btn btn-primary">👤 Employee Summary Report (Per Month)</a>
-                    <a href="semester_report.php?period=janjun" class="btn btn-primary">📄 Print 6-Month Report (January – June)</a>
-                    <a href="semester_report.php?period=juldec" class="btn btn-print">📄 Print 6-Month Report (July – December)</a>
-                </div>
-                <div class="selector-actions selector-actions-secondary">
-                    <a href="call_times.php" class="btn btn-secondary">
-                        ⏰ Manage Call Times / Events
-                    </a>
-                    <?php if ($role === 'admin'): ?>
-                        <a href="ttis_import.php" class="btn btn-secondary">
-                            📤 TTIS Spreadsheet Import
-                        </a>
-                        <a href="admin_config.php" class="btn btn-secondary">
-                            ⚙ Admin Configuration
-                        </a>
-                    <?php endif; ?>
-                    <a href="archive_employees.php" class="btn btn-secondary">
-                        📁 Archive Employees (Resigned)
-                    </a>
-                    <a href="test_employee.php" class="btn btn-secondary">
-                        🧪 Test Employee Computation
-                    </a>
+        <div class="dashboard-shortcuts">
+            <div class="shortcut-header">
+                <div>
+                    <h2>Quick Actions</h2>
+                    <p>Open commonly used reports and maintenance pages without crowding the month selector.</p>
                 </div>
             </div>
-            
+
+            <div class="shortcut-grid">
+                <div class="shortcut-group">
+                    <div class="shortcut-group-title">Reports</div>
+                    <a href="early_bird.php" class="shortcut-card">
+                        <span class="shortcut-icon">🐦</span>
+                        <span>
+                            <strong>Early Time-In Report</strong>
+                            <small>Employees by early arrival time</small>
+                        </span>
+                    </a>
+                    <a href="first_arrival.php" class="shortcut-card">
+                        <span class="shortcut-icon">🥇</span>
+                        <span>
+                            <strong>First to Arrive</strong>
+                            <small>Monthly first/last arrival ranking</small>
+                        </span>
+                    </a>
+                    <a href="employee_summary.php" class="shortcut-card">
+                        <span class="shortcut-icon">👤</span>
+                        <span>
+                            <strong>Employee Summary</strong>
+                            <small>Per employee monthly performance</small>
+                        </span>
+                    </a>
+                </div>
+
+                <div class="shortcut-group">
+                    <div class="shortcut-group-title">Print Reports</div>
+                    <a href="semester_report.php?period=janjun" class="shortcut-card">
+                        <span class="shortcut-icon">📄</span>
+                        <span>
+                            <strong>January - June</strong>
+                            <small>Generate 6-month printable report</small>
+                        </span>
+                    </a>
+                    <a href="semester_report.php?period=juldec" class="shortcut-card">
+                        <span class="shortcut-icon">📄</span>
+                        <span>
+                            <strong>July - December</strong>
+                            <small>Generate 6-month printable report</small>
+                        </span>
+                    </a>
+                </div>
+
+                <div class="shortcut-group">
+                    <div class="shortcut-group-title">DTR Tools</div>
+                    <a href="month_dtr.php" class="shortcut-card">
+                        <span class="shortcut-icon">🕘</span>
+                        <span>
+                            <strong>Month DTR</strong>
+                            <small>Review and edit DTR attendance records</small>
+                        </span>
+                    </a>
+                    <a href="dtr_difference.php" class="shortcut-card">
+                        <span class="shortcut-icon">🔎</span>
+                        <span>
+                            <strong>DTR Difference</strong>
+                            <small>Compare system time-in against DTR records</small>
+                        </span>
+                    </a>
+                </div>
+
+                <div class="shortcut-group">
+                    <div class="shortcut-group-title">Setup & Tools</div>
+                    <a href="call_times.php" class="shortcut-card">
+                        <span class="shortcut-icon">⏰</span>
+                        <span>
+                            <strong>Call Times / Events</strong>
+                            <small>Manage daily call time settings</small>
+                        </span>
+                    </a>
+                    <a href="archive_employees.php" class="shortcut-card">
+                        <span class="shortcut-icon">📁</span>
+                        <span>
+                            <strong>Archive Employees</strong>
+                            <small>Manage resigned/inactive employees</small>
+                        </span>
+                    </a>
+                    <a href="test_employee.php" class="shortcut-card">
+                        <span class="shortcut-icon">🧪</span>
+                        <span>
+                            <strong>Test Computation</strong>
+                            <small>Check employee points manually</small>
+                        </span>
+                    </a>
+                    <?php if ($role === 'admin'): ?>
+                        <a href="ttis_import.php" class="shortcut-card">
+                            <span class="shortcut-icon">📤</span>
+                            <span>
+                                <strong>TTIS Import</strong>
+                                <small>Upload attendance spreadsheet</small>
+                            </span>
+                        </a>
+                        <a href="admin_config.php" class="shortcut-card">
+                            <span class="shortcut-icon">⚙</span>
+                            <span>
+                                <strong>Admin Configuration</strong>
+                                <small>Update system-wide settings</small>
+                            </span>
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <div class="month-year-selector">
             <?php
             // Get current year and month
             $currentYear = (int) date('Y');
-            $currentMonth = date('n');
-            
-            // Generate years (always include 2025 for record review)
+            $currentMonth = (int) date('n');
+
+            // Generate current and archive years only. Future years stay hidden until needed.
             $startYear = min(2025, $currentYear);
-            $endYear = $currentYear + 1;
-            $years = range($startYear, $endYear);
+            $archiveYears = $currentYear > $startYear ? range($startYear, $currentYear - 1) : [];
             $months = [
                 1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
                 5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
                 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
             ];
-            
-            // Display years in reverse order (most recent first)
-            foreach (array_reverse($years) as $year):
             ?>
-                <div class="year-section">
-                    <div class="year-title"><?php echo $year; ?></div>
-                    <div class="months-grid">
-                        <?php foreach ($months as $monthNum => $monthName): 
-                            $isCurrent = ($year == $currentYear && $monthNum == $currentMonth);
-                        ?>
-                            <a href="month.php?month=<?php echo $monthNum; ?>&year=<?php echo $year; ?>" 
-                               class="month-item <?php echo $isCurrent ? 'current-month' : ''; ?>">
-                                <div class="month-name"><?php echo $monthName; ?></div>
-                                <div class="month-number"><?php echo str_pad($monthNum, 2, '0', STR_PAD_LEFT); ?>/<?php echo $year; ?></div>
-                            </a>
-                        <?php endforeach; ?>
-                    </div>
+            <div class="selector-header">
+                <div>
+                    <h2>Attendance Records</h2>
+                    <p>Select a month to view, edit, and review attendance records for that period.</p>
                 </div>
-            <?php endforeach; ?>
+                <a href="month.php?month=<?php echo $currentMonth; ?>&year=<?php echo $currentYear; ?>" class="current-month-shortcut">
+                    Open Current Month
+                    <span><?php echo htmlspecialchars($months[$currentMonth]); ?> <?php echo $currentYear; ?></span>
+                </a>
+            </div>
+
+            <div class="year-section year-section-current">
+                <div class="year-title">
+                    <span><?php echo $currentYear; ?></span>
+                    <small>Current Year</small>
+                </div>
+                <div class="months-grid">
+                    <?php foreach ($months as $monthNum => $monthName):
+                        $isCurrent = ($monthNum == $currentMonth);
+                        $isFuture = ($monthNum > $currentMonth);
+                    ?>
+                        <a href="month.php?month=<?php echo $monthNum; ?>&year=<?php echo $currentYear; ?>"
+                           class="month-item <?php echo $isCurrent ? 'current-month' : ''; ?> <?php echo $isFuture ? 'future-month' : ''; ?>">
+                            <?php if ($isCurrent): ?>
+                                <div class="month-badge">Current</div>
+                            <?php endif; ?>
+                            <div class="month-name"><?php echo $monthName; ?></div>
+                            <div class="month-number"><?php echo str_pad($monthNum, 2, '0', STR_PAD_LEFT); ?>/<?php echo $currentYear; ?></div>
+                            <div class="month-action">Open records</div>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <?php if (!empty($archiveYears)): ?>
+                <details class="archive-years">
+                    <summary>
+                        <span>View Archive Years</span>
+                        <small><?php echo implode(', ', array_reverse($archiveYears)); ?></small>
+                    </summary>
+                    <?php foreach (array_reverse($archiveYears) as $year): ?>
+                        <div class="year-section year-section-archive">
+                            <div class="year-title">
+                                <span><?php echo $year; ?></span>
+                                <small>Archive</small>
+                            </div>
+                            <div class="months-grid">
+                                <?php foreach ($months as $monthNum => $monthName): ?>
+                                    <a href="month.php?month=<?php echo $monthNum; ?>&year=<?php echo $year; ?>" class="month-item">
+                                        <div class="month-name"><?php echo $monthName; ?></div>
+                                        <div class="month-number"><?php echo str_pad($monthNum, 2, '0', STR_PAD_LEFT); ?>/<?php echo $year; ?></div>
+                                        <div class="month-action">Open records</div>
+                                    </a>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </details>
+            <?php endif; ?>
         </div>
     </div>
     
@@ -206,6 +331,25 @@ include 'includes/header.php';
             if (emp.status === 'late') return true;
             if (!emp.time_in) return false;
             return toMinutes(emp.time_in) > lateThresholdMinutes;
+        }
+
+        function isStatusOnlyAttendance(status) {
+            return ['offset', 'leave', 'ob', 'holiday', 'suspended'].includes(status);
+        }
+
+        function getAttendanceStatusLabel(status) {
+            const labels = {
+                absent: 'Absent',
+                offset: 'Offset',
+                leave: 'Leave',
+                ob: 'Official Business',
+                holiday: 'Holiday',
+                suspended: 'Suspended',
+                not_checked_in: 'Not Checked In',
+                late: 'Late',
+                present: 'Present'
+            };
+            return labels[status] || 'Not Checked In';
         }
 
         function updateEmployeeToggleUI() {
@@ -268,11 +412,12 @@ include 'includes/header.php';
                 const hasCheckedIn = emp.time_in !== null && emp.time_in !== '';
                 const isLate = isLateByStatusOrTime(emp);
                 const isAbsent = emp.status === 'absent';
+                const isStatusOnly = isStatusOnlyAttendance(emp.status);
                 const isEarlyBird = earlyBirdOnly.some(earlyEmp => earlyEmp.id === emp.id);
 
                 let cardClass = isAbsent
                     ? 'not-checked-in'
-                    : (isLate ? 'late' : (hasCheckedIn ? '' : 'not-checked-in'));
+                    : (isStatusOnly ? 'status-only' : (isLate ? 'late' : (hasCheckedIn ? '' : 'not-checked-in')));
                 if (isEarlyBird) {
                     cardClass += ' early-bird';
                 }
@@ -280,6 +425,8 @@ include 'includes/header.php';
                 let statusBadge = '';
                 if (isAbsent) {
                     statusBadge = '<span class="employee-status status-not-checked-in">Absent</span>';
+                } else if (isStatusOnly) {
+                    statusBadge = `<span class="employee-status status-excused">${getAttendanceStatusLabel(emp.status)}</span>`;
                 } else if (hasCheckedIn) {
                     statusBadge = `<span class="employee-status ${isLate ? 'status-late' : 'status-present'}">${isLate ? 'Late' : 'Present'}</span>`;
                 } else {
@@ -288,11 +435,14 @@ include 'includes/header.php';
                 if (isEarlyBird) {
                     statusBadge += '<span class="employee-status status-early-bird">Early Bird</span>';
                 }
+                if (Number(emp.is_wfh)) {
+                    statusBadge += '<span class="employee-status status-excused">WFH</span>';
+                }
 
                 const timeDisplay = isAbsent
                     ? 'Marked as Absent'
-                    : (emp.time_in ? emp.time_in.substring(0, 5) : 'Not checked in');
-                const timeClass = isAbsent ? '' : (isLate ? 'late' : (hasCheckedIn ? 'present' : ''));
+                    : (isStatusOnly ? getAttendanceStatusLabel(emp.status) : (emp.time_in ? emp.time_in.substring(0, 5) : 'Not checked in'));
+                const timeClass = isAbsent ? '' : (isStatusOnly ? 'status-only' : (isLate ? 'late' : (hasCheckedIn ? 'present' : '')));
 
                 const taskSource = (isAbsent && absentMap.has(emp.id)) ? absentMap.get(emp.id) : emp;
                 const tasks = (taskSource && Array.isArray(taskSource.tasks)) ? taskSource.tasks : [];
@@ -355,7 +505,8 @@ include 'includes/header.php';
                         lastDashboardData = data;
                         // Update statistics
                         const absentCount = data.absent_count || 0;
-                        const notCheckedInCount = data.total_employees - data.checked_in_count - absentCount;
+                        const statusOnlyCount = Array.isArray(data.status_employees) ? data.status_employees.length : 0;
+                        const notCheckedInCount = data.total_employees - data.checked_in_count - absentCount - statusOnlyCount;
                         let statsHTML = `
                             <div class="stat-card">
                                 <div class="stat-number">${data.total_employees}</div>
@@ -368,6 +519,10 @@ include 'includes/header.php';
                             <div class="stat-card danger">
                                 <div class="stat-number">${absentCount}</div>
                                 <div class="stat-label">Absent Today</div>
+                            </div>
+                            <div class="stat-card info">
+                                <div class="stat-number">${statusOnlyCount}</div>
+                                <div class="stat-label">OB / Offset / Leave</div>
                             </div>
                             <div class="stat-card ${notCheckedInCount > 0 ? 'warning' : 'success'}">
                                 <div class="stat-number">${notCheckedInCount}</div>
@@ -438,39 +593,74 @@ include 'includes/header.php';
             const isLate = (t) => toMinutes(t) > lateThresholdMinutes;
             
             const all = data.employees || [];
-            const withTime = all.filter(emp => emp.time_in).slice().sort((a, b) => toMinutes(a.time_in) - toMinutes(b.time_in));
+            const withTime = all
+                .filter(emp => emp.time_in && !isStatusOnlyAttendance(emp.status) && emp.status !== 'absent')
+                .slice()
+                .sort((a, b) => toMinutes(a.time_in) - toMinutes(b.time_in));
             const earlyBird = withTime.filter(emp => !isLate(emp.time_in));
             const late = withTime.filter(emp => isLate(emp.time_in));
+            const groupByStatus = (status) => all
+                .filter(emp => emp.status === status)
+                .map(emp => emp.name)
+                .join('\n');
             
-            const earlyBirdNames = earlyBird.map(emp => emp.name + ' - ' + formatTime(emp.time_in));
+            const formatReportLine = (emp) => emp.name + ' - ' + formatTime(emp.time_in) + (Number(emp.is_wfh) ? ' (WFH)' : '');
+            const earlyBirdNames = earlyBird.map(formatReportLine);
             const earlyBirdLines = earlyBirdNames.length > 0
                 ? earlyBirdNames[0] + (earlyBirdNames.length > 1 ? '\n\n' + earlyBirdNames.slice(1).join('\n') : '')
                 : '';
-            const lateLines = late.map(emp => emp.name + ' - ' + formatTime(emp.time_in)).join('\n');
-            const absentLines = all.filter(emp => !emp.time_in).map(emp => emp.name).join('\n');
+            const lateLines = late.map(formatReportLine).join('\n');
+            const obLines = groupByStatus('ob');
+            const offsetLines = groupByStatus('offset');
+            const leaveLines = groupByStatus('leave');
+            const holidayLines = groupByStatus('holiday');
+            const suspendedLines = groupByStatus('suspended');
+            const absentLines = groupByStatus('absent');
+            const notCheckedInLines = all
+                .filter(emp => !emp.time_in && emp.status === 'not_checked_in')
+                .map(emp => emp.name)
+                .join('\n');
             
             let out = dateFormatted + ' (' + dayName + ') Time in as of ' + timeAsOf + '\n\nEarly Bird\n' + (earlyBirdLines || '(None)');
             out += '\n\nLate\n' + (lateLines || '(None)');
+            out += '\n\nOfficial Business (OB)\n' + (obLines || '(None)');
+            out += '\n\nOffset\n' + (offsetLines || '(None)');
+            out += '\n\nLeave\n' + (leaveLines || '(None)');
+            out += '\n\nHoliday\n' + (holidayLines || '(None)');
+            out += '\n\nSuspended\n' + (suspendedLines || '(None)');
             out += '\n\nAbsent\n' + (absentLines || '(None)');
+            out += '\n\nNot Yet Time-In\n' + (notCheckedInLines || '(None)');
             return out;
         }
         
-        function copyReportToClipboard() {
+        async function copyReportToClipboard() {
             const ta = document.getElementById('reportPreviewText');
-            ta.select();
-            ta.setSelectionRange(0, 99999);
-            try {
-                document.execCommand('copy');
-                const btn = document.getElementById('copyReportBtn');
-                const orig = btn.textContent;
+            const btn = document.getElementById('copyReportBtn');
+            const originalText = btn ? btn.textContent : 'Copy to clipboard';
+            const markCopied = () => {
+                if (!btn) return;
                 btn.textContent = 'Copied!';
-                setTimeout(() => { btn.textContent = orig; }, 2000);
+                setTimeout(() => { btn.textContent = originalText; }, 2000);
+            };
+
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(ta.value);
+                    markCopied();
+                    return;
+                }
+
+                ta.select();
+                ta.setSelectionRange(0, 99999);
+                const copied = document.execCommand('copy');
+                if (!copied) {
+                    throw new Error('Copy command was not available.');
+                }
+                markCopied();
             } catch (err) {
-                navigator.clipboard.writeText(ta.value).then(() => {
-                    const btn = document.getElementById('copyReportBtn');
-                    btn.textContent = 'Copied!';
-                    setTimeout(() => { btn.textContent = 'Copy to clipboard'; }, 2000);
-                }).catch(() => alert('Could not copy. Please select and copy manually.'));
+                ta.focus();
+                ta.select();
+                alert('Could not copy automatically. Please press Ctrl+C to copy the selected report.');
             }
         }
         

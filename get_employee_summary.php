@@ -9,8 +9,8 @@ function calculateGradePoints($status, $time, $attendanceDate = null) {
     if ($status === 'leave' || $status === 'holiday' || $status === 'suspended') {
         return 0;
     }
-    if ($status === 'offset') {
-        return 5;
+    if ($status === 'offset' || $status === 'ob') {
+        return 3;
     }
     if ($status === 'absent' || empty($time) || $time === '00:00:00') {
         return 0;
@@ -43,6 +43,33 @@ function calculateGradePoints($status, $time, $attendanceDate = null) {
 $employee_id = isset($_GET['employee_id']) ? (int)$_GET['employee_id'] : 0;
 $year = isset($_GET['year']) ? (int)$_GET['year'] : date('Y');
 if ($year < 2000 || $year > 2100) $year = date('Y');
+$period = $_GET['period'] ?? 'full';
+$start_month = 1;
+$end_month = 12;
+$period_label = 'Full Year';
+
+if ($period === 'h1') {
+    $start_month = 1;
+    $end_month = 6;
+    $period_label = 'January - June';
+} elseif ($period === 'h2') {
+    $start_month = 7;
+    $end_month = 12;
+    $period_label = 'July - December';
+} elseif ($period === 'custom') {
+    $requested_start = isset($_GET['start_month']) ? (int)$_GET['start_month'] : 1;
+    $requested_end = isset($_GET['end_month']) ? (int)$_GET['end_month'] : 12;
+    if ($requested_start >= 1 && $requested_start <= 12 && $requested_end >= 1 && $requested_end <= 12) {
+        $start_month = min($requested_start, $requested_end);
+        $end_month = max($requested_start, $requested_end);
+    }
+} elseif (preg_match('/^\d{1,2}$/', (string)$period)) {
+    $selected_month = (int)$period;
+    if ($selected_month >= 1 && $selected_month <= 12) {
+        $start_month = $selected_month;
+        $end_month = $selected_month;
+    }
+}
 
 if ($employee_id <= 0) {
     echo json_encode(['success' => false, 'message' => 'Invalid employee.']);
@@ -51,6 +78,15 @@ if ($employee_id <= 0) {
 
 try {
     $conn = getDBConnection();
+
+    $conn->query("CREATE TABLE IF NOT EXISTS call_times (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        call_date DATE NOT NULL UNIQUE,
+        call_time TIME NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_call_date (call_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $stmt = $conn->prepare("SELECT employee_name FROM employees WHERE id = ? AND status = 'active'");
     $stmt->bind_param("i", $employee_id);
@@ -64,8 +100,15 @@ try {
     $employee_name = $res->fetch_assoc()['employee_name'];
     $stmt->close();
 
-    $start_date = $year . '-01-01';
-    $end_date = $year . '-12-31';
+    $month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    if ($start_month === $end_month) {
+        $period_label = $month_names[$start_month];
+    } elseif ($period === 'custom') {
+        $period_label = $month_names[$start_month] . ' - ' . $month_names[$end_month];
+    }
+
+    $start_date = sprintf('%04d-%02d-01', $year, $start_month);
+    $end_date = date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $year, $end_month)));
 
     $att_stmt = $conn->prepare("SELECT attendance_date, status, time_in FROM attendance WHERE employee_id = ? AND attendance_date >= ? AND attendance_date <= ? ORDER BY attendance_date");
     $att_stmt->bind_param("iss", $employee_id, $start_date, $end_date);
@@ -76,6 +119,19 @@ try {
         $rows[] = $r;
     }
     $att_stmt->close();
+
+    $call_times_by_date = [];
+    $ct_stmt = $conn->prepare("SELECT call_date, call_time FROM call_times WHERE call_date >= ? AND call_date <= ?");
+    if ($ct_stmt) {
+        $ct_stmt->bind_param("ss", $start_date, $end_date);
+        if ($ct_stmt->execute()) {
+            $ct_result = $ct_stmt->get_result();
+            while ($ct = $ct_result->fetch_assoc()) {
+                $call_times_by_date[$ct['call_date']] = substr($ct['call_time'], 0, 5);
+            }
+        }
+        $ct_stmt->close();
+    }
 
     $hs_result = $conn->query("SELECT DISTINCT attendance_date FROM attendance WHERE status IN ('holiday','suspended') AND attendance_date >= '" . $conn->real_escape_string($start_date) . "' AND attendance_date <= '" . $conn->real_escape_string($end_date) . "'");
     $holiday_suspended_by_month = array_fill(1, 12, 0);
@@ -90,9 +146,8 @@ try {
         }
     }
 
-    $month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     $months = [];
-    for ($m = 1; $m <= 12; $m++) {
+    for ($m = $start_month; $m <= $end_month; $m++) {
         $m_start = sprintf('%04d-%02d-01', $year, $m);
         $m_end = date('Y-m-t', strtotime($m_start));
         $ts = strtotime($m_start);
@@ -104,7 +159,7 @@ try {
         }
         $working_days = max(0, $weekday_count - ($holiday_suspended_by_month[$m] ?? 0));
 
-        $present = $late = $absent = $offset = $leave = $holiday = $suspended = 0;
+        $present = $late = $absent = $offset = $ob = $leave = $holiday = $suspended = 0;
         $points_sum = 0;
         $points_count = 0;
         foreach ($rows as $r) {
@@ -113,14 +168,16 @@ try {
             $st = $r['status'];
             $ti = $r['time_in'];
             if ($st === 'absent') { $absent++; $points_sum -= 1; $points_count++; continue; }
-            if ($st === 'offset') { $offset++; $points_sum += 5; $points_count++; continue; }
+            if ($st === 'offset') { $offset++; $points_sum += 3; $points_count++; continue; }
+            if ($st === 'ob') { $ob++; $points_sum += 3; $points_count++; continue; }
             if ($st === 'leave') { $leave++; continue; }
             if ($st === 'holiday') { $holiday++; continue; }
             if ($st === 'suspended') { $suspended++; continue; }
             if (!empty($ti) && $ti !== '00:00:00') {
-                $hr = (int)substr($ti, 0, 2);
-                $min = (int)substr($ti, 3, 2);
-                if ($hr > 8 || ($hr == 8 && $min > 0)) $late++;
+                $call_time = $call_times_by_date[$d] ?? '08:00';
+                $arrival_minutes = ((int)substr($ti, 0, 2) * 60) + (int)substr($ti, 3, 2);
+                $call_minutes = ((int)substr($call_time, 0, 2) * 60) + (int)substr($call_time, 3, 2);
+                if ($st === 'late' || $arrival_minutes > $call_minutes) $late++;
                 else $present++;
                 $points_sum += calculateGradePoints($st, $ti, $d);
                 $points_count++;
@@ -130,6 +187,7 @@ try {
         $remaining_tardiness = $late % 4;
         $points_sum -= $absent_from_lates;
         $present_total = $present + $late + $offset;
+        $total_points = $points_sum;
         $average_points = $points_count > 0 ? round($points_sum / $points_count, 2) : 0;
 
         $months[] = [
@@ -142,10 +200,13 @@ try {
             'absent_from_lates' => $absent_from_lates,
             'remaining_tardiness' => $remaining_tardiness,
             'offset' => $offset,
+            'ob' => $ob,
             'leave' => $leave,
             'holiday' => $holiday,
             'suspended' => $suspended,
             'working_days' => $working_days,
+            'total_points' => $total_points,
+            'attendance_days' => $points_count,
             'average_points' => $average_points
         ];
     }
@@ -156,6 +217,10 @@ try {
         'employee_id' => $employee_id,
         'employee_name' => $employee_name,
         'year' => $year,
+        'period' => $period,
+        'period_label' => $period_label,
+        'start_month' => $start_month,
+        'end_month' => $end_month,
         'months' => $months
     ]);
 } catch (Exception $e) {

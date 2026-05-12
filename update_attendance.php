@@ -13,6 +13,7 @@ $employee_id = (int)($_POST['employee_id'] ?? 0);
 $date = $_POST['date'] ?? '';
 $time_in = $_POST['time_in'] ?? '';
 $status = $_POST['status'] ?? 'present';
+$is_wfh = isset($_POST['is_wfh']) && $_POST['is_wfh'] === '1' ? 1 : 0;
 
 if ($employee_id <= 0 || empty($date)) {
     echo json_encode(['success' => false, 'message' => 'Invalid employee ID or date']);
@@ -26,7 +27,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
 }
 
 // Validate status
-$validStatuses = ['present', 'absent', 'offset', 'leave', 'late', 'holiday', 'suspended', 'clear'];
+$validStatuses = ['present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended', 'clear'];
 if (!in_array($status, $validStatuses)) {
     $status = 'present';
 }
@@ -68,7 +69,7 @@ if (!empty($time_in)) {
     
     // If time is entered, status should be present or late (not absent/offset/leave)
     // Override absent/offset/leave status if time is provided
-    if (in_array($originalStatus, ['absent', 'offset', 'leave', 'holiday', 'suspended'])) {
+    if (in_array($originalStatus, ['absent', 'offset', 'leave', 'ob', 'holiday', 'suspended'])) {
         $status = 'present'; // Change to present, will check if late below
     }
 
@@ -97,7 +98,7 @@ if (!empty($time_in)) {
     }
 } else {
     // No time provided - respect the selected status
-    if (in_array($originalStatus, ['offset', 'absent', 'leave', 'holiday', 'suspended'])) {
+    if (in_array($originalStatus, ['offset', 'absent', 'leave', 'ob', 'holiday', 'suspended'])) {
         // Keep the original status as-is, just clear the time
         $status = $originalStatus;
         $time_in = null;
@@ -110,6 +111,10 @@ if (!empty($time_in)) {
         $status = '';
         $time_in = null;
     }
+}
+
+if (empty($time_in) || in_array($status, ['absent', 'offset', 'leave', 'ob', 'holiday', 'suspended', ''], true)) {
+    $is_wfh = 0;
 }
 
 try {
@@ -125,7 +130,8 @@ try {
             attendance_date DATE NOT NULL,
             time_in TIME,
             time_out TIME,
-            status ENUM('present', 'absent', 'offset', 'leave', 'late', 'holiday', 'suspended') DEFAULT 'present',
+            is_wfh TINYINT(1) NOT NULL DEFAULT 0,
+            status ENUM('present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended') DEFAULT 'present',
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -139,6 +145,16 @@ try {
             $conn->close();
             echo json_encode(['success' => false, 'message' => 'Failed to create attendance table: ' . $conn->error]);
             exit();
+        }
+    } else {
+        // Ensure existing installations can save Official Business entries.
+        @$conn->query("ALTER TABLE attendance MODIFY COLUMN status ENUM('present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended') DEFAULT 'present'");
+        $wfh_column_check = $conn->query("SHOW COLUMNS FROM attendance LIKE 'is_wfh'");
+        if ($wfh_column_check === false || $wfh_column_check->num_rows === 0) {
+            $conn->query("ALTER TABLE attendance ADD COLUMN is_wfh TINYINT(1) NOT NULL DEFAULT 0 AFTER time_out");
+        }
+        if ($wfh_column_check !== false) {
+            $wfh_column_check->free();
         }
     }
     
@@ -169,14 +185,15 @@ try {
     // This prevents duplicate records and always updates existing records
     // This ensures that once a record exists for a date, it will be updated, not duplicated
     $upsert_stmt = $conn->prepare("
-        INSERT INTO attendance (employee_id, attendance_date, time_in, status, updated_at) 
-        VALUES (?, ?, ?, ?, NOW())
+        INSERT INTO attendance (employee_id, attendance_date, time_in, status, is_wfh, updated_at)
+        VALUES (?, ?, ?, ?, ?, NOW())
         ON DUPLICATE KEY UPDATE 
             time_in = ?,
             status = ?,
+            is_wfh = ?,
             updated_at = NOW()
     ");
-    $upsert_stmt->bind_param("isssss", $employee_id, $date, $time_in, $status, $time_in, $status);
+    $upsert_stmt->bind_param("isssissi", $employee_id, $date, $time_in, $status, $is_wfh, $time_in, $status, $is_wfh);
     
     if ($upsert_stmt->execute()) {
         // If Holiday or Suspended: apply same status to ALL active employees for this date
@@ -187,14 +204,14 @@ try {
                 $types = '';
                 $params = [];
                 while ($row = $all_emp->fetch_assoc()) {
-                    $placeholders[] = "(?, ?, NULL, ?, NOW())";
+                    $placeholders[] = "(?, ?, NULL, ?, 0, NOW())";
                     $types .= 'iss';
                     $params[] = (int)$row['id'];
                     $params[] = $date;
                     $params[] = $status;
                 }
                 $all_emp->free();
-                $sql = "INSERT INTO attendance (employee_id, attendance_date, time_in, status, updated_at) VALUES " . implode(', ', $placeholders) . " ON DUPLICATE KEY UPDATE time_in = NULL, status = VALUES(status), updated_at = NOW()";
+                $sql = "INSERT INTO attendance (employee_id, attendance_date, time_in, status, is_wfh, updated_at) VALUES " . implode(', ', $placeholders) . " ON DUPLICATE KEY UPDATE time_in = NULL, status = VALUES(status), is_wfh = 0, updated_at = NOW()";
                 $bulk_stmt = $conn->prepare($sql);
                 if ($bulk_stmt) {
                     $bulk_stmt->bind_param($types, ...$params);
@@ -205,7 +222,7 @@ try {
         }
         
         // Get the actual saved status from database to ensure it's correct
-        $check_stmt = $conn->prepare("SELECT status, time_in FROM attendance WHERE employee_id = ? AND attendance_date = ?");
+        $check_stmt = $conn->prepare("SELECT status, time_in, is_wfh FROM attendance WHERE employee_id = ? AND attendance_date = ?");
         $check_stmt->bind_param("is", $employee_id, $date);
         $check_stmt->execute();
         $check_result = $check_stmt->get_result();
@@ -217,12 +234,14 @@ try {
         
         $final_status = $saved_record ? $saved_record['status'] : $status;
         $final_time = $saved_record ? $saved_record['time_in'] : $time_in;
+        $final_is_wfh = $saved_record ? (int)$saved_record['is_wfh'] : $is_wfh;
         
         echo json_encode([
             'success' => true, 
             'message' => $status === 'holiday' || $status === 'suspended' ? 'Attendance saved and applied to all employees for this date.' : 'Attendance saved successfully',
             'status' => $final_status,
-            'time_in' => $final_time
+            'time_in' => $final_time,
+            'is_wfh' => $final_is_wfh
         ]);
     } else {
         $error_msg = $conn->error;

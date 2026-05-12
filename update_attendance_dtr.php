@@ -26,7 +26,7 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
 }
 
 // Validate status
-$validStatuses = ['present', 'absent', 'offset', 'leave', 'late', 'holiday', 'suspended', 'clear'];
+$validStatuses = ['present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended', 'clear'];
 if (!in_array($status, $validStatuses)) {
     $status = 'present';
 }
@@ -47,7 +47,7 @@ if (!empty($time_in)) {
     
     // If time is entered, status should be present or late (not absent/offset/leave)
     // Override absent/offset/leave status if time is provided
-    if (in_array($originalStatus, ['absent', 'offset', 'leave', 'holiday', 'suspended'])) {
+    if (in_array($originalStatus, ['absent', 'offset', 'leave', 'ob', 'holiday', 'suspended'])) {
         $status = 'present'; // Change to present, will check if late below
     }
     
@@ -66,7 +66,7 @@ if (!empty($time_in)) {
     }
 } else {
     // No time provided - respect the selected status
-    if (in_array($originalStatus, ['offset', 'absent', 'leave', 'holiday', 'suspended'])) {
+    if (in_array($originalStatus, ['offset', 'absent', 'leave', 'ob', 'holiday', 'suspended'])) {
         // Keep the original status as-is, just clear the time
         $status = $originalStatus;
         $time_in = null;
@@ -94,7 +94,7 @@ try {
             attendance_date DATE NOT NULL,
             time_in TIME,
             time_out TIME,
-            status ENUM('present', 'absent', 'offset', 'leave', 'late', 'holiday', 'suspended') DEFAULT 'present',
+            status ENUM('present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended') DEFAULT 'present',
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -109,6 +109,8 @@ try {
             echo json_encode(['success' => false, 'message' => 'Failed to create attendance_dtr table: ' . $conn->error]);
             exit();
         }
+    } else {
+        @$conn->query("ALTER TABLE attendance_dtr MODIFY COLUMN status ENUM('present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended') DEFAULT 'present'");
     }
     
     // Handle clearing entry (delete record)

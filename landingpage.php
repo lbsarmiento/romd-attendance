@@ -494,6 +494,29 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
             background: linear-gradient(135deg, #ef4444, #b91c1c);
         }
 
+        .deck-card.deck-card-status-wfh {
+            border-color: #7dd3fc;
+            background: linear-gradient(180deg, #ffffff, #f0f9ff);
+        }
+
+        .deck-card.deck-card-status-wfh .deck-card-badge {
+            color: #075985;
+            background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+            border: 1px solid rgba(14, 165, 233, 0.22);
+        }
+
+        .deck-card.is-selected.deck-card-status-wfh {
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.35);
+            background: linear-gradient(135deg, #0284c7, #38bdf8);
+            box-shadow: 0 18px 34px rgba(14, 165, 233, 0.28);
+        }
+
+        .deck-card.is-selected.deck-card-status-wfh .deck-card-badge {
+            color: #075985;
+            background: #ffffff;
+        }
+
         .deck-card-month {
             display: block;
             font-size: 15px;
@@ -738,6 +761,17 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
             background: #ccfbf1;
         }
 
+        .status-ob {
+            color: #075985;
+            background: #e0f2fe;
+        }
+
+        .wfh-pill {
+            color: #075985;
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+        }
+
         .status-absent {
             color: #b91c1c;
             background: #fee2e2;
@@ -775,6 +809,11 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
         .timeline-row.status-leave {
             background: linear-gradient(180deg, #ffffff, #f0fdfa);
             border-color: #99f6e4;
+        }
+
+        .timeline-row.status-ob {
+            background: linear-gradient(180deg, #ffffff, #f0f9ff);
+            border-color: #bae6fd;
         }
 
         .timeline-row.status-absent {
@@ -1197,7 +1236,7 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
         }
 
         function getStatusClass(status) {
-            const allowed = ['present', 'late', 'offset', 'leave', 'absent', 'holiday', 'suspended', 'not_checked_in'];
+            const allowed = ['present', 'late', 'offset', 'leave', 'ob', 'absent', 'holiday', 'suspended', 'not_checked_in'];
             return allowed.includes(status) ? status : 'not_checked_in';
         }
 
@@ -1207,6 +1246,7 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
                 late: 'Late',
                 offset: 'Offset',
                 leave: 'Leave',
+                ob: 'Official Business',
                 absent: 'Absent',
                 holiday: 'Holiday',
                 suspended: 'Suspended',
@@ -1223,6 +1263,7 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
             const labels = {
                 offset: 'Offset',
                 leave: 'On Leave',
+                ob: 'Official Business',
                 absent: 'Absent',
                 holiday: 'Holiday',
                 suspended: 'Suspended',
@@ -1232,7 +1273,7 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
         }
 
         function buildSummary(employees) {
-            const order = ['present', 'late', 'offset', 'leave', 'absent', 'holiday', 'suspended', 'not_checked_in'];
+            const order = ['present', 'late', 'offset', 'leave', 'ob', 'absent', 'holiday', 'suspended', 'not_checked_in'];
             const counts = {};
             order.forEach((status) => {
                 counts[status] = 0;
@@ -1260,7 +1301,7 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
         }
 
         function getEarlyBirds(employees) {
-            const arrivals = employees.filter((employee) => employee.time_in);
+            const arrivals = employees.filter((employee) => employee.time_in && !Number(employee.is_wfh));
             if (arrivals.length === 0) {
                 return [];
             }
@@ -1285,7 +1326,7 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
         }
 
         function getDeckMeta(dateStr) {
-            return state.dayMeta[dateStr] || { blocked: false, status: null, label: '' };
+            return state.dayMeta[dateStr] || { blocked: false, status: null, label: '', badgeStatus: null };
         }
 
         function preloadWorkingDayMeta() {
@@ -1310,11 +1351,15 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
                 }
 
                 results.forEach(({ dateStr, data }) => {
-                    const blockedStatus = data && data.success ? getBlockedDeckStatus(data.employees || []) : null;
+                    const employees = data && data.success ? (data.employees || []) : [];
+                    const blockedStatus = data && data.success ? getBlockedDeckStatus(employees) : null;
+                    const hasWfh = employees.some((employee) => Number(employee.is_wfh));
+                    const badgeStatus = blockedStatus || (hasWfh ? 'wfh' : null);
                     state.dayMeta[dateStr] = {
                         blocked: Boolean(blockedStatus),
                         status: blockedStatus,
-                        label: blockedStatus ? getStatusLabel(blockedStatus) : ''
+                        label: blockedStatus ? getStatusLabel(blockedStatus) : (hasWfh ? 'WFH' : ''),
+                        badgeStatus
                     };
                 });
 
@@ -1327,12 +1372,13 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
             deck.innerHTML = state.workingDays.map((dateStr) => `
                 ${(() => {
                     const meta = getDeckMeta(dateStr);
-                    const blockedClass = meta.blocked ? `is-blocked deck-card-status-${meta.status}` : '';
+                    const badgeStatusClass = meta.badgeStatus ? `deck-card-status-${meta.badgeStatus}` : '';
+                    const blockedClass = meta.blocked ? 'is-blocked' : '';
                     const selectedClass = dateStr === state.selectedDate ? 'is-selected' : '';
-                    const badgeHtml = meta.blocked ? `<span class="deck-card-badge">${escapeHtml(meta.label)}</span>` : '';
+                    const badgeHtml = meta.label ? `<span class="deck-card-badge">${escapeHtml(meta.label)}</span>` : '';
                     const disabledAttr = meta.blocked ? 'disabled aria-disabled="true"' : '';
                     return `
-                <button type="button" class="deck-card ${selectedClass} ${blockedClass}" data-date="${dateStr}" ${disabledAttr}>
+                <button type="button" class="deck-card ${selectedClass} ${blockedClass} ${badgeStatusClass}" data-date="${dateStr}" ${disabledAttr}>
                     ${badgeHtml}
                     <span class="deck-card-month">${formatMonthShort(dateStr)}</span>
                     <span class="deck-card-day">${dateStr.slice(-2)}</span>
@@ -1428,6 +1474,7 @@ $public_welcome_message = $app_settings['public_welcome_message'] ?? "Welcome to
                             <div class="timeline-name">${escapeHtml(employee.name || 'Employee')}</div>
                             <div class="timeline-badges">
                                 <span class="status-pill status-${statusClass}">${escapeHtml(getStatusLabel(statusClass))}</span>
+                                ${Number(employee.is_wfh) ? '<span class="status-pill wfh-pill">WFH</span>' : ''}
                                 ${isEarly ? '<span class="status-pill early-pill">Early Bird</span>' : ''}
                             </div>
                         </div>

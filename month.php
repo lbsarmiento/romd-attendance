@@ -41,7 +41,8 @@ if ($table_check === false || $table_check->num_rows == 0) {
         attendance_date DATE NOT NULL,
         time_in TIME,
         time_out TIME,
-        status ENUM('present', 'absent', 'offset', 'leave', 'late', 'holiday', 'suspended') DEFAULT 'present',
+        is_wfh TINYINT(1) NOT NULL DEFAULT 0,
+        status ENUM('present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended') DEFAULT 'present',
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -52,6 +53,13 @@ if ($table_check === false || $table_check->num_rows == 0) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
     
     $conn->query($create_table_sql);
+}
+$wfh_column_check = $conn->query("SHOW COLUMNS FROM attendance LIKE 'is_wfh'");
+if ($wfh_column_check === false || $wfh_column_check->num_rows === 0) {
+    $conn->query("ALTER TABLE attendance ADD COLUMN is_wfh TINYINT(1) NOT NULL DEFAULT 0 AFTER time_out");
+}
+if ($wfh_column_check !== false) {
+    $wfh_column_check->free();
 }
 
 // Check if employees table exists and get employees
@@ -85,9 +93,9 @@ if (!empty($employees)) {
         $start_date = sprintf('%04d-%02d-01', $year, $month);
         $end_date = sprintf('%04d-%02d-%02d', $year, $month, $daysInMonth);
         
-        $attendance_query = "SELECT employee_id, attendance_date, time_in, status 
-                             FROM attendance 
-                             WHERE employee_id IN ($placeholders) 
+        $attendance_query = "SELECT employee_id, attendance_date, time_in, status, is_wfh
+                             FROM attendance
+                             WHERE employee_id IN ($placeholders)
                              AND attendance_date >= ? AND attendance_date <= ?
                              ORDER BY attendance_date";
         
@@ -106,7 +114,8 @@ if (!empty($employees)) {
                         $date_key = date('j', strtotime($row['attendance_date']));
                         $attendance_data[$row['employee_id']][$date_key] = [
                             'time_in' => $row['time_in'],
-                            'status' => $row['status']
+                            'status' => $row['status'],
+                            'is_wfh' => (int)($row['is_wfh'] ?? 0)
                         ];
                     }
                     $attendance_result->free();
@@ -161,7 +170,7 @@ foreach ($attendance_data as $employeeAttendance) {
         $timeIn = $attendance['time_in'] ?? '';
         if (
             empty($timeIn)
-            || in_array($status, ['absent', 'offset', 'leave', 'holiday', 'suspended'], true)
+            || in_array($status, ['absent', 'offset', 'leave', 'ob', 'holiday', 'suspended'], true)
         ) {
             continue;
         }
@@ -217,8 +226,8 @@ function calculateGradePoints($status, $time, $attendanceDate = null) {
     if ($status === 'leave' || $status === 'holiday' || $status === 'suspended') {
         return 0;
     }
-    if ($status === 'offset') {
-        return 5;
+    if ($status === 'offset' || $status === 'ob') {
+        return 3;
     }
     if ($status === 'absent' || empty($time) || $time === '00:00:00') {
         return 0;
@@ -254,6 +263,14 @@ function calculateGradePoints($status, $time, $attendanceDate = null) {
 
 // Get day names
 $dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+$weekdaysInMonth = 0;
+for ($day = 1; $day <= $daysInMonth; $day++) {
+    $date = sprintf('%04d-%02d-%02d', $year, $month, $day);
+    $dayOfWeek = (int)date('w', strtotime($date));
+    if ($dayOfWeek !== 0 && $dayOfWeek !== 6) {
+        $weekdaysInMonth++;
+    }
+}
 ?>
 <?php
 $page_title = $monthName . ' ' . $year . ' - ROMD Attendance';
@@ -408,30 +425,37 @@ include 'includes/header.php';
             }
             .nav-btn {
                 width: 100%;
-</head>
-<body>
-    <div class="header">
-        <div class="header-content">
-            <h1>ROMD Attendance System</h1>
-            <div class="user-info">
-                <span>Welcome, <strong><?php echo htmlspecialchars($username); ?></strong> (<?php echo htmlspecialchars($role); ?>)</span>
-                <a href="index.php" class="back-btn">← Back</a>
-                <a href="logout.php" class="logout-btn">Logout</a>
-            </div>
-        </div>
-    </div>
-    
             }
         }
     </style>
-    <div class="container">
+    <div class="container month-page">
         <div class="month-header">
-            <h2><?php echo $monthName . ' ' . $year; ?></h2>
-            <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px; flex-wrap: wrap;">
-                <button class="add-employee-btn" onclick="openAddEmployeeModal()">+ Add Employee</button>
-                <button class="add-employee-btn" style="background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);" onclick="openResultsModal()">📊 Results</button>
+            <div class="month-hero">
+                <div class="month-hero-copy">
+                    <span class="month-eyebrow">Attendance Month</span>
+                    <h2><?php echo htmlspecialchars($monthName . ' ' . $year); ?></h2>
+                    <p>Click any working-day cell to update time-in or status. Weekends are shown but locked.</p>
+                </div>
+                <div class="month-hero-stats">
+                    <div class="month-stat">
+                        <strong><?php echo count($employees); ?></strong>
+                        <span>Employees</span>
+                    </div>
+                    <div class="month-stat">
+                        <strong><?php echo $daysInMonth; ?></strong>
+                        <span>Calendar Days</span>
+                    </div>
+                    <div class="month-stat">
+                        <strong><?php echo $weekdaysInMonth; ?></strong>
+                        <span>Weekdays</span>
+                    </div>
+                </div>
             </div>
-            <div class="navigation">
+            <div class="month-actions">
+                <button class="add-employee-btn" onclick="openAddEmployeeModal()">+ Add Employee</button>
+                <button class="add-employee-btn btn-results" onclick="openResultsModal()">View Results</button>
+            </div>
+            <div class="navigation month-navigation">
                 <?php
                 // Previous month
                 $prevMonth = $month - 1;
@@ -449,13 +473,25 @@ include 'includes/header.php';
                     $nextYear++;
                 }
                 ?>
-                <a href="month.php?month=<?php echo $prevMonth; ?>&year=<?php echo $prevYear; ?>" class="nav-btn">← Previous Month</a>
-                <a href="index.php" class="nav-btn">Back to Dashboard</a>
-                <a href="month.php?month=<?php echo $nextMonth; ?>&year=<?php echo $nextYear; ?>" class="nav-btn">Next Month →</a>
+                <a href="month.php?month=<?php echo $prevMonth; ?>&year=<?php echo $prevYear; ?>" class="nav-btn">Previous</a>
+                <a href="index.php" class="nav-btn nav-btn-muted">Dashboard</a>
+                <a href="month.php?month=<?php echo $nextMonth; ?>&year=<?php echo $nextYear; ?>" class="nav-btn">Next</a>
             </div>
         </div>
         
         <div class="attendance-table-container">
+            <div class="attendance-table-toolbar">
+                <div>
+                    <h3>Attendance Grid</h3>
+                    <p>Tip: points appear in the top-right corner of each recorded cell.</p>
+                </div>
+                <div class="attendance-legend">
+                    <span><i class="legend-dot present"></i> Present</span>
+                    <span><i class="legend-dot late"></i> Late</span>
+                    <span><i class="legend-dot absent"></i> Absent</span>
+                    <span><i class="legend-dot excused"></i> Offset / OB / Leave</span>
+                </div>
+            </div>
             <table class="attendance-table">
                 <thead>
                     <tr>
@@ -465,9 +501,10 @@ include 'includes/header.php';
                             $date = sprintf('%04d-%02d-%02d', $year, $month, $day);
                             $dayOfWeek = date('w', strtotime($date));
                             $dayName = $dayNames[$dayOfWeek];
-                            echo '<th>';
-                            echo '<div>' . $dayName . '</div>';
-                            echo '<div>' . $monthName . ' ' . $day . ', ' . $year . '</div>';
+                            $isWeekendHeader = ($dayOfWeek == 0 || $dayOfWeek == 6);
+                            echo '<th class="' . ($isWeekendHeader ? 'weekend-day-header' : '') . '">';
+                            echo '<div class="day-short">' . htmlspecialchars(substr($dayName, 0, 3)) . '</div>';
+                            echo '<div class="day-number">' . $day . '</div>';
                             echo '</th>';
                         }
                         ?>
@@ -509,7 +546,7 @@ include 'includes/header.php';
                                             if ($attendance['status'] == 'absent') {
                                                 $employee_points[$employee['id']] -= 1;
                                             }
-                                            // Do not include leave/holiday/suspended in average divisor
+                                            // Do not include non-scoring excused statuses in average divisor
                                             if (!in_array($attendance['status'], ['leave', 'holiday', 'suspended'], true)) {
                                                 $employee_attendance_days[$employee['id']]++;
                                             }
@@ -521,6 +558,9 @@ include 'includes/header.php';
                                         } elseif ($attendance['status'] == 'leave') {
                                             $cell_class = 'status-leave';
                                             $cell_content = 'Leave';
+                                        } elseif ($attendance['status'] == 'ob') {
+                                            $cell_class = 'status-ob';
+                                            $cell_content = 'OB';
                                         } elseif ($attendance['status'] == 'holiday') {
                                             $cell_class = 'status-holiday';
                                             $cell_content = '';
@@ -545,9 +585,10 @@ include 'includes/header.php';
                                     $employee_id = $employee['id'];
                                     $current_time = isset($attendance_data[$employee_id][$day]) ? formatTime($attendance_data[$employee_id][$day]['time_in']) : '';
                                     $current_status = isset($attendance_data[$employee_id][$day]) ? $attendance_data[$employee_id][$day]['status'] : '';
+                                    $current_is_wfh = isset($attendance_data[$employee_id][$day]) ? (int)($attendance_data[$employee_id][$day]['is_wfh'] ?? 0) : 0;
                                     $call_time_for_date = getCallTimeForDate($date_full);
                                     $has_first_time_in_crown = isset($attendance_data[$employee_id][$day]['time_in'], $first_time_in_by_day[$day])
-                                        && !in_array($current_status, ['absent', 'offset', 'leave', 'holiday', 'suspended'], true)
+                                        && !in_array($current_status, ['absent', 'offset', 'leave', 'ob', 'holiday', 'suspended'], true)
                                         && $attendance_data[$employee_id][$day]['time_in'] === $first_time_in_by_day[$day];
                                     
                                     // Make cell editable if not weekend
@@ -559,12 +600,16 @@ include 'includes/header.php';
                                         if ($cell_points !== null) {
                                             $cell_inner .= '<span class="cell-points">' . htmlspecialchars((string)$cell_points) . '</span>';
                                         }
+                                        if ($current_is_wfh === 1 && !empty($current_time)) {
+                                            $cell_inner .= '<span class="cell-wfh">WFH</span>';
+                                        }
                                         $cell_inner .= htmlspecialchars($cell_content);
                                         echo '<td class="time-cell ' . $cell_class . ' editable-cell" 
                                               data-employee-id="' . $employee_id . '" 
                                               data-date="' . $date_full . '" 
                                               data-time="' . htmlspecialchars($current_time) . '"
                                               data-status="' . htmlspecialchars($current_status) . '"
+                                              data-wfh="' . $current_is_wfh . '"
                                               data-call-time="' . htmlspecialchars($call_time_for_date) . '"
                                               onclick="editCell(this)">' . $cell_inner . '</td>';
                                     } else {
@@ -574,6 +619,9 @@ include 'includes/header.php';
                                         }
                                         if ($cell_points !== null) {
                                             $cell_inner .= '<span class="cell-points">' . htmlspecialchars((string)$cell_points) . '</span>';
+                                        }
+                                        if ($current_is_wfh === 1 && !empty($current_time)) {
+                                            $cell_inner .= '<span class="cell-wfh">WFH</span>';
                                         }
                                         $cell_inner .= htmlspecialchars($cell_content);
                                         echo '<td class="time-cell ' . $cell_class . '">' . $cell_inner . '</td>';
@@ -596,55 +644,121 @@ include 'includes/header.php';
             $averages[$empId] = $attendanceDays > 0 ? round($points / $attendanceDays, 2) : 0;
         }
         arsort($averages);
+        $topAverages = array_slice($averages, 0, 3, true);
+        $bestAverage = !empty($averages) ? reset($averages) : 0;
+        $totalGradePoints = array_sum($employee_points);
+        $totalRecordedDays = array_sum($employee_attendance_days);
+        $overallAverage = $totalRecordedDays > 0 ? round($totalGradePoints / $totalRecordedDays, 2) : 0;
     ?>
-    <div class="grade-summary">
-        <h3>Monthly Grade Points (Average)</h3>
-        <table class="grade-table">
-            <thead>
-                <tr>
-                    <th style="width: 60px;">#</th>
-                    <th>Employee Name</th>
-                    <th style="width: 120px; text-align: right;">Total Points</th>
-                    <th style="width: 150px; text-align: right;">Average Points</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php 
-                $rank = 1;
-                foreach ($averages as $empId => $average): 
-                    $employeeName = $employee_names[$empId] ?? 'Employee';
-                    $totalPts = $employee_points[$empId] ?? 0;
-                ?>
-                <tr>
-                    <td><?php echo $rank++; ?></td>
-                    <td><?php echo htmlspecialchars($employeeName); ?></td>
-                    <td class="grade-points" style="text-align: right;"><?php echo (int)$totalPts; ?></td>
-                    <td class="grade-points" style="text-align: right;"><?php echo number_format($average, 2); ?></td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+    <div class="container month-page grade-summary-container">
+        <section class="grade-summary">
+            <div class="grade-summary-header">
+                <div>
+                    <span class="month-eyebrow">Performance Snapshot</span>
+                    <h3>Monthly Grade Points (Average)</h3>
+                    <p>Compact view of total points, counted attendance days, and average points for <?php echo htmlspecialchars($monthName . ' ' . $year); ?>.</p>
+                </div>
+                <div class="grade-summary-metrics">
+                    <div class="grade-mini-stat">
+                        <strong><?php echo number_format($bestAverage, 2); ?></strong>
+                        <span>Highest Avg</span>
+                    </div>
+                    <div class="grade-mini-stat">
+                        <strong><?php echo number_format($overallAverage, 2); ?></strong>
+                        <span>Overall Avg</span>
+                    </div>
+                    <div class="grade-mini-stat">
+                        <strong><?php echo (int)$totalRecordedDays; ?></strong>
+                        <span>Counted Days</span>
+                    </div>
+                </div>
+            </div>
+
+            <?php if (!empty($topAverages)): ?>
+                <div class="grade-top-grid">
+                    <?php
+                    $topRank = 1;
+                    foreach ($topAverages as $empId => $average):
+                        $employeeName = $employee_names[$empId] ?? 'Employee';
+                        $totalPts = $employee_points[$empId] ?? 0;
+                        $attendanceDays = $employee_attendance_days[$empId] ?? 0;
+                    ?>
+                        <article class="grade-top-card rank-<?php echo $topRank; ?>">
+                            <div class="grade-rank-pill">Top <?php echo $topRank; ?></div>
+                            <h4><?php echo htmlspecialchars($employeeName); ?></h4>
+                            <div class="grade-score"><?php echo number_format($average, 2); ?></div>
+                            <div class="grade-card-meta">
+                                <span><?php echo (int)$totalPts; ?> pts</span>
+                                <span><?php echo (int)$attendanceDays; ?> days</span>
+                            </div>
+                        </article>
+                    <?php
+                        $topRank++;
+                    endforeach;
+                    ?>
+                </div>
+            <?php endif; ?>
+
+            <details class="grade-ranking-panel" open>
+                <summary>View Complete Ranking</summary>
+                <div class="grade-table-wrap">
+                    <table class="grade-table">
+                        <thead>
+                            <tr>
+                                <th class="rank-col">Rank</th>
+                                <th>Employee Name</th>
+                                <th class="numeric-col">Total Points</th>
+                                <th class="numeric-col">Counted Days</th>
+                                <th class="numeric-col">Average Points</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            $rank = 1;
+                            foreach ($averages as $empId => $average):
+                                $employeeName = $employee_names[$empId] ?? 'Employee';
+                                $totalPts = $employee_points[$empId] ?? 0;
+                                $attendanceDays = $employee_attendance_days[$empId] ?? 0;
+                            ?>
+                            <tr>
+                                <td><span class="grade-rank-badge"><?php echo $rank++; ?></span></td>
+                                <td><?php echo htmlspecialchars($employeeName); ?></td>
+                                <td class="grade-points numeric-col"><?php echo (int)$totalPts; ?></td>
+                                <td class="numeric-col"><?php echo (int)$attendanceDays; ?></td>
+                                <td class="grade-points numeric-col"><?php echo number_format($average, 2); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        </section>
     </div>
     <?php endif; ?>
     
     <!-- Results Modal -->
-    <div id="resultsModal" class="modal">
-        <div class="modal-content" style="max-width: 95%; max-height: 90vh; overflow-y: auto;">
+    <div id="resultsModal" class="modal month-modal">
+        <div class="modal-content results-modal-content">
             <div class="modal-header">
-                <h3>Monthly Attendance Results - <?php echo $monthName . ' ' . $year; ?></h3>
+                <div>
+                    <span class="modal-kicker">Monthly Report</span>
+                    <h3>Attendance Results</h3>
+                    <p><?php echo htmlspecialchars($monthName . ' ' . $year); ?> summary, rankings, and printable report.</p>
+                </div>
                 <span class="close" onclick="closeResultsModal()">&times;</span>
             </div>
-            <div style="padding: 15px 0; border-bottom: 1px solid #e0e0e0; margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                <button class="btn btn-primary" onclick="printResults()" style="flex: 1; min-width: 150px;">
-                    🖨️ Print Report
-                </button>
-                <input type="text" id="employeeSearch" placeholder="🔍 Search employee..." 
-                       style="flex: 2; min-width: 200px; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px;"
-                       onkeyup="filterEmployees()">
-            </div>
-            <div id="resultsContent" style="padding: 20px 0;">
-                <div style="text-align: center; padding: 20px;">
-                    <p>Loading statistics...</p>
+            <div class="modal-body">
+                <div class="results-toolbar">
+                    <button class="btn btn-primary" onclick="printResults()">
+                        Print Report
+                    </button>
+                    <input type="text" id="employeeSearch" placeholder="Search employee..."
+                           onkeyup="filterEmployees()">
+                </div>
+                <div id="resultsContent" class="results-content">
+                    <div class="results-loading">
+                        <p>Loading statistics...</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -656,24 +770,34 @@ include 'includes/header.php';
     </div>
     
     <!-- Add Employee Modal -->
-    <div id="addEmployeeModal" class="modal">
-        <div class="modal-content">
+    <div id="addEmployeeModal" class="modal month-modal">
+        <div class="modal-content add-employee-modal-content">
             <div class="modal-header">
-                <h3>Add New Employee</h3>
+                <div>
+                    <span class="modal-kicker">Employee Setup</span>
+                    <h3>Add New Employee</h3>
+                    <p>Create a new active employee record for the attendance grid.</p>
+                </div>
                 <span class="close" onclick="closeAddEmployeeModal()">&times;</span>
             </div>
-            <div id="addEmployeeMessage" class="message"></div>
-            <form id="addEmployeeForm" onsubmit="addEmployee(event)">
-                <div class="form-group">
-                    <label for="employeeName">Employee Name</label>
-                    <input type="text" id="employeeName" name="employee_name" required 
-                           placeholder="Enter employee full name">
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeAddEmployeeModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Add Employee</button>
-                </div>
-            </form>
+            <div class="modal-body">
+                <div id="addEmployeeMessage" class="message"></div>
+                <form id="addEmployeeForm" onsubmit="addEmployee(event)">
+                    <div class="form-group">
+                        <label for="employeeName">Employee Name</label>
+                        <input type="text" id="employeeName" name="employee_name" required
+                               placeholder="Enter employee full name">
+                        <p class="field-help">Use the complete name as it should appear in monthly attendance reports.</p>
+                    </div>
+                    <div class="modal-note">
+                        New employees will appear in this month and future attendance views after saving.
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeAddEmployeeModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Add Employee</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
     
@@ -800,6 +924,7 @@ include 'includes/header.php';
                         html += '<th style="padding: 15px; text-align: center; border-right: 1px solid rgba(255,255,255,0.3); width: 120px; background: rgba(255, 193, 7, 0.3);">Late Count</th>';
                         html += '<th style="padding: 15px; text-align: center; border-right: 1px solid rgba(255,255,255,0.3); width: 110px; background: rgba(220, 53, 69, 0.25);">Actual Absent</th>';
                         html += '<th style="padding: 15px; text-align: center; border-right: 1px solid rgba(255,255,255,0.3); width: 140px;">Equivalent Absent (from Late)</th>';
+                        html += '<th style="padding: 15px; text-align: center; border-right: 1px solid rgba(255,255,255,0.3); width: 80px;">OB</th>';
                         html += '<th style="padding: 15px; text-align: center; border-right: 1px solid rgba(255,255,255,0.3); width: 100px;">Total Points</th>';
                         html += '<th style="padding: 15px; text-align: center; width: 120px;">Remaining Tardiness</th>';
                         html += '</tr></thead>';
@@ -811,6 +936,7 @@ include 'includes/header.php';
                             const absentFromLates = emp.absent_from_lates !== undefined ? emp.absent_from_lates : Math.floor(lateCount / 4);
                             const remainingTardiness = emp.remaining_tardiness !== undefined ? emp.remaining_tardiness : (lateCount % 4);
                             const totalPts = emp.total_points !== undefined ? emp.total_points : 0;
+                            const obCount = emp.ob || 0;
                             const rowStyle = (index % 2 === 0) ? 'background: #ffffff;' : 'background: #f8f9fa;';
                             
                             html += `<tr class="employee-row" data-name="${emp.name.toLowerCase()}" style="${rowStyle}">`;
@@ -819,6 +945,7 @@ include 'includes/header.php';
                             html += `<td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; color: ${lateCount > 0 ? '#856404' : '#666'}; font-weight: ${lateCount > 0 ? '700' : '400'}; font-size: 15px;">${lateCount}</td>`;
                             html += `<td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; color: ${actualAbsentCount > 0 ? '#721c24' : '#666'}; font-weight: ${actualAbsentCount > 0 ? '600' : '400'}; font-size: 14px;">${actualAbsentCount}</td>`;
                             html += `<td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; color: ${absentFromLates > 0 ? '#b21f2d' : '#666'}; font-weight: ${absentFromLates > 0 ? '600' : '400'}; font-size: 14px;">${absentFromLates}</td>`;
+                            html += `<td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; color: ${obCount > 0 ? '#0369a1' : '#666'}; font-weight: ${obCount > 0 ? '600' : '400'}; font-size: 14px;">${obCount}</td>`;
                             html += `<td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6; border-right: 1px solid #dee2e6; font-weight: 600; color: #0066cc;">${totalPts}</td>`;
                             html += `<td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6; color: ${remainingTardiness > 0 ? '#856404' : '#666'}; font-weight: ${remainingTardiness > 0 ? '600' : '400'}; font-size: 14px;">${remainingTardiness}</td>`;
                             html += '</tr>';
@@ -1015,6 +1142,7 @@ include 'includes/header.php';
                 printHTML += '<th style="width: 6%; text-align: center;">Equiv Absent (Late)</th>';
                 printHTML += '<th style="width: 5%; text-align: center;">Rem. Tardiness</th>';
                 printHTML += '<th style="width: 5%; text-align: center;">Leave</th>';
+                printHTML += '<th style="width: 5%; text-align: center;">OB</th>';
                 printHTML += '<th style="width: 5%; text-align: center;">Holiday</th>';
                 printHTML += '<th style="width: 5%; text-align: center;">Suspended</th>';
                 printHTML += '<th style="width: 5%; text-align: center;">Total Days</th>';
@@ -1035,7 +1163,7 @@ include 'includes/header.php';
                 });
                 
                 sortedEmployees.forEach((emp, index) => {
-                    const totalDays = emp.present + emp.late + emp.absent + emp.offset;
+                    const totalDays = emp.present + emp.late + emp.absent + emp.offset + (emp.ob || 0);
                     const hasLate = emp.late > 0;
                     const effectiveAbsentVal = emp.effective_absent !== undefined ? emp.effective_absent : emp.absent;
                     const hasAbsent = effectiveAbsentVal > 0;
@@ -1092,6 +1220,7 @@ include 'includes/header.php';
                     printHTML += `<td style="text-align: center; color: ${absentFromLates > 0 ? '#b21f2d' : '#666'}; font-weight: 600; font-size: 13px;">${absentFromLates}</td>`;
                     printHTML += `<td style="text-align: center; color: ${remainingTardiness > 0 ? '#856404' : '#666'}; font-weight: 600; font-size: 13px;">${remainingTardiness}</td>`;
                     printHTML += `<td style="text-align: center; color: #666; font-weight: 600; font-size: 13px;">${emp.leave || 0}</td>`;
+                    printHTML += `<td style="text-align: center; color: #666; font-weight: 600; font-size: 13px;">${emp.ob || 0}</td>`;
                     printHTML += `<td style="text-align: center; color: #666; font-weight: 600; font-size: 13px;">${emp.holiday || 0}</td>`;
                     printHTML += `<td style="text-align: center; color: #666; font-weight: 600; font-size: 13px;">${emp.suspended || 0}</td>`;
                     printHTML += `<td style="text-align: center; font-weight: bold;">${totalDays}</td>`;
@@ -1347,11 +1476,13 @@ include 'includes/header.php';
             const date = cell.getAttribute('data-date');
             const currentTime = cell.getAttribute('data-time') || '';
             const currentStatus = cell.getAttribute('data-status') || '';
+            const currentWfh = cell.getAttribute('data-wfh') === '1';
             const callTime = cell.getAttribute('data-call-time') || '08:00';
             
             // Store original values for cancel
             const originalTime = currentTime;
             const originalStatus = currentStatus;
+            const originalWfh = currentWfh ? '1' : '0';
             const originalContent = cell.innerHTML;
             const originalClassName = cell.className;
             
@@ -1378,6 +1509,7 @@ include 'includes/header.php';
                 { value: 'absent', label: 'Absent' },
                 { value: 'offset', label: 'Offset' },
                 { value: 'leave', label: 'Leave' },
+                { value: 'ob', label: 'Official Business (OB)' },
                 { value: 'holiday', label: 'Holiday' },
                 { value: 'suspended', label: 'Suspended' }
             ];
@@ -1388,6 +1520,33 @@ include 'includes/header.php';
                 selectHTML += `<option value="${option.value}" ${isSelected ? 'selected' : ''}>${option.label}</option>`;
             });
             select.innerHTML = selectHTML;
+
+            const wfhLabel = document.createElement('label');
+            wfhLabel.className = 'wfh-toggle';
+            const wfhCheckbox = document.createElement('input');
+            wfhCheckbox.type = 'checkbox';
+            wfhCheckbox.checked = currentWfh;
+            const wfhText = document.createElement('span');
+            wfhText.textContent = 'WFH setup';
+            wfhLabel.appendChild(wfhCheckbox);
+            wfhLabel.appendChild(wfhText);
+            wfhLabel.onclick = function(e) {
+                e.stopPropagation();
+            };
+            wfhCheckbox.onchange = function(e) {
+                e.stopPropagation();
+                if (saveTimeout) clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(save, 100);
+            };
+
+            const updateWfhAvailability = function() {
+                const statusWithoutTime = ['absent', 'offset', 'leave', 'ob', 'holiday', 'suspended', 'clear'].includes(select.value);
+                const hasTime = Boolean(input.value);
+                wfhCheckbox.disabled = statusWithoutTime || !hasTime;
+                if (wfhCheckbox.disabled) {
+                    wfhCheckbox.checked = false;
+                }
+            };
             
             // Prevent dropdown from closing when clicking
             select.onmousedown = function(e) {
@@ -1400,8 +1559,8 @@ include 'includes/header.php';
             // Auto-update status when time is entered
             const handleTimeChange = function() {
                 const timeValue = input.value;
-                // If time is entered and status is absent/offset/leave/clear, change to present
-                if (timeValue && ['absent', 'offset', 'leave', 'holiday', 'suspended', 'clear'].includes(select.value)) {
+                // If time is entered and status is absent/offset/leave/OB/clear, change to present
+                if (timeValue && ['absent', 'offset', 'leave', 'ob', 'holiday', 'suspended', 'clear'].includes(select.value)) {
                     select.value = 'present';
                 }
                 // Check if time is late (after configured call time)
@@ -1419,12 +1578,14 @@ include 'includes/header.php';
                         select.value = 'present';
                     }
                 }
+                updateWfhAvailability();
             };
             input.onchange = handleTimeChange;
             input.oninput = function() {
-                if (!input.value && !['offset', 'leave', 'holiday', 'suspended'].includes(select.value)) {
+                if (!input.value && !['offset', 'leave', 'ob', 'holiday', 'suspended'].includes(select.value)) {
                     select.value = 'clear';
                 }
+                updateWfhAvailability();
             };
 
             // Save function
@@ -1442,10 +1603,12 @@ include 'includes/header.php';
                 if (statusValue === 'clear') {
                     timeValue = '';
                     statusValue = 'clear';
+                    wfhCheckbox.checked = false;
                 } 
-                // Handle status options that don't require time (absent, offset, leave, holiday, suspended)
-                else if (statusValue === 'absent' || statusValue === 'offset' || statusValue === 'leave' || statusValue === 'holiday' || statusValue === 'suspended') {
+                // Handle status options that don't require time (absent, offset, leave, OB, holiday, suspended)
+                else if (statusValue === 'absent' || statusValue === 'offset' || statusValue === 'leave' || statusValue === 'ob' || statusValue === 'holiday' || statusValue === 'suspended') {
                     timeValue = '';
+                    wfhCheckbox.checked = false;
                     // Keep the selected status as-is - don't override it
                 }
                 // If time is entered, determine if it's late or present
@@ -1466,7 +1629,8 @@ include 'includes/header.php';
                     statusValue = 'absent';
                 }
                 
-                saveCell(employeeId, date, timeValue, statusValue, cell);
+                const isWfh = timeValue && wfhCheckbox.checked ? 1 : 0;
+                saveCell(employeeId, date, timeValue, statusValue, isWfh, cell);
                 
                 setTimeout(() => { isSaving = false; }, 500);
             };
@@ -1477,9 +1641,10 @@ include 'includes/header.php';
                 const value = select.value;
                 if (value === 'clear') {
                     input.value = '';
-                } else if (value === 'absent' || value === 'offset' || value === 'leave' || value === 'holiday' || value === 'suspended') {
+                } else if (value === 'absent' || value === 'offset' || value === 'leave' || value === 'ob' || value === 'holiday' || value === 'suspended') {
                     input.value = '';
                 }
+                updateWfhAvailability();
                 // Save immediately when status is changed (for all status types)
                 // Clear any pending save timeout
                 if (saveTimeout) clearTimeout(saveTimeout);
@@ -1520,6 +1685,7 @@ include 'includes/header.php';
                     cell.className = originalClassName;
                     cell.setAttribute('data-time', originalTime);
                     cell.setAttribute('data-status', originalStatus);
+                    cell.setAttribute('data-wfh', originalWfh);
                 }
             };
             select.onkeydown = function(e) {
@@ -1534,13 +1700,16 @@ include 'includes/header.php';
                     cell.className = originalClassName;
                     cell.setAttribute('data-time', originalTime);
                     cell.setAttribute('data-status', originalStatus);
+                    cell.setAttribute('data-wfh', originalWfh);
                 }
             };
             
             container.appendChild(input);
             container.appendChild(select);
+            container.appendChild(wfhLabel);
             cell.innerHTML = '';
             cell.appendChild(container);
+            updateWfhAvailability();
             input.focus();
         }
         
@@ -1548,7 +1717,7 @@ include 'includes/header.php';
         function calculateCellPoints(status, time, dateStr) {
             if (!status) return '';
             if (status === 'absent') return -1;
-            if (status === 'offset') return 5;
+            if (status === 'offset' || status === 'ob') return 3;
             if (status === 'leave' || status === 'holiday' || status === 'suspended') return 0;
             if (!time) return '';
             const parts = time.split(':');
@@ -1576,7 +1745,7 @@ include 'includes/header.php';
             return 1;
         }
 
-        function setCellDisplayWithPoints(cell, mainText, points) {
+        function setCellDisplayWithPoints(cell, mainText, points, isWfh = false) {
             cell.innerHTML = '';
             if (points !== '' && points !== null && points !== undefined) {
                 const p = document.createElement('span');
@@ -1584,18 +1753,25 @@ include 'includes/header.php';
                 p.textContent = String(points);
                 cell.appendChild(p);
             }
+            if (isWfh) {
+                const wfh = document.createElement('span');
+                wfh.className = 'cell-wfh';
+                wfh.textContent = 'WFH';
+                cell.appendChild(wfh);
+            }
             if (mainText) cell.appendChild(document.createTextNode(mainText));
         }
 
-        function saveCell(employeeId, date, time, status, cell) {
+        function saveCell(employeeId, date, time, status, isWfh, cell) {
             const formData = new FormData();
             formData.append('employee_id', employeeId);
             formData.append('date', date);
             formData.append('time_in', time);
             formData.append('status', status);
+            formData.append('is_wfh', isWfh ? '1' : '0');
             
             // Debug logging
-            console.log('Saving attendance:', { employeeId, date, time, status });
+            console.log('Saving attendance:', { employeeId, date, time, status, isWfh });
             
             fetch('update_attendance.php', {
                 method: 'POST',
@@ -1608,6 +1784,7 @@ include 'includes/header.php';
                     // Get the actual status returned from server (may have been auto-corrected)
                     const actualStatus = data.status || status;
                     const actualTime = data.time_in || time;
+                    const actualIsWfh = data.is_wfh === 1 || data.is_wfh === '1';
                     
                     // Holiday/Suspended are applied to all employees for this date - reload to show every cell
                     if (actualStatus === 'holiday' || actualStatus === 'suspended') {
@@ -1621,43 +1798,57 @@ include 'includes/header.php';
                         setCellDisplayWithPoints(cell, 'Offset', points);
                         cell.setAttribute('data-status', 'offset');
                         cell.setAttribute('data-time', '');
+                        cell.setAttribute('data-wfh', '0');
                         cell.className = 'time-cell status-offset editable-cell';
                     } else if (actualStatus === 'leave') {
                         setCellDisplayWithPoints(cell, 'Leave', points);
                         cell.setAttribute('data-status', 'leave');
                         cell.setAttribute('data-time', '');
+                        cell.setAttribute('data-wfh', '0');
                         cell.className = 'time-cell status-leave editable-cell';
+                    } else if (actualStatus === 'ob') {
+                        setCellDisplayWithPoints(cell, 'OB', points);
+                        cell.setAttribute('data-status', 'ob');
+                        cell.setAttribute('data-time', '');
+                        cell.setAttribute('data-wfh', '0');
+                        cell.className = 'time-cell status-ob editable-cell';
                     } else if (actualStatus === 'holiday') {
                         setCellDisplayWithPoints(cell, '', points);
                         cell.setAttribute('data-status', 'holiday');
                         cell.setAttribute('data-time', '');
+                        cell.setAttribute('data-wfh', '0');
                         cell.className = 'time-cell status-holiday editable-cell';
                     } else if (actualStatus === 'suspended') {
                         setCellDisplayWithPoints(cell, '', points);
                         cell.setAttribute('data-status', 'suspended');
                         cell.setAttribute('data-time', '');
+                        cell.setAttribute('data-wfh', '0');
                         cell.className = 'time-cell status-suspended editable-cell';
                     } else if (actualStatus === 'absent') {
                         setCellDisplayWithPoints(cell, 'Absent', points);
                         cell.setAttribute('data-status', 'absent');
                         cell.setAttribute('data-time', '');
+                        cell.setAttribute('data-wfh', '0');
                         cell.className = 'time-cell status-absent editable-cell';
                     } else if (actualStatus === 'late') {
                         const timeDisplay = actualTime ? actualTime.substring(0, 5) : '';
-                        setCellDisplayWithPoints(cell, timeDisplay, points);
+                        setCellDisplayWithPoints(cell, timeDisplay, points, actualIsWfh);
                         cell.setAttribute('data-time', timeDisplay);
                         cell.setAttribute('data-status', 'late');
+                        cell.setAttribute('data-wfh', actualIsWfh ? '1' : '0');
                         cell.className = 'time-cell time-late editable-cell';
                     } else if (actualTime) {
                         const timeDisplay = actualTime.substring(0, 5); // HH:MM format
-                        setCellDisplayWithPoints(cell, timeDisplay, points);
+                        setCellDisplayWithPoints(cell, timeDisplay, points, actualIsWfh);
                         cell.setAttribute('data-time', timeDisplay);
                         cell.setAttribute('data-status', 'present');
+                        cell.setAttribute('data-wfh', actualIsWfh ? '1' : '0');
                         cell.className = 'time-cell time-normal editable-cell';
                     } else {
                         setCellDisplayWithPoints(cell, '', '');
                         cell.setAttribute('data-time', '');
                         cell.setAttribute('data-status', '');
+                        cell.setAttribute('data-wfh', '0');
                         cell.className = 'time-cell empty-cell editable-cell';
                     }
                 } else {

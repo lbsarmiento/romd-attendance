@@ -41,7 +41,7 @@ if ($table_check === false || $table_check->num_rows == 0) {
         attendance_date DATE NOT NULL,
         time_in TIME,
         time_out TIME,
-        status ENUM('present', 'absent', 'offset', 'leave', 'late', 'holiday', 'suspended') DEFAULT 'present',
+        status ENUM('present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended') DEFAULT 'present',
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -52,6 +52,8 @@ if ($table_check === false || $table_check->num_rows == 0) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
     
     $conn->query($create_table_sql);
+} else {
+    @$conn->query("ALTER TABLE attendance_dtr MODIFY COLUMN status ENUM('present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended') DEFAULT 'present'");
 }
 
 // Check if employees table exists and get employees
@@ -142,8 +144,8 @@ function calculateGradePoints($status, $time, $attendanceDate = null) {
     if ($status === 'leave' || $status === 'holiday' || $status === 'suspended') {
         return 0;
     }
-    if ($status === 'offset') {
-        return 5;
+    if ($status === 'offset' || $status === 'ob') {
+        return 3;
     }
     if ($status === 'absent' || empty($time) || $time === '00:00:00') {
         return 0;
@@ -179,6 +181,14 @@ function calculateGradePoints($status, $time, $attendanceDate = null) {
 
 // Get day names
 $dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+$weekdaysInMonth = 0;
+for ($day = 1; $day <= $daysInMonth; $day++) {
+    $date = sprintf('%04d-%02d-%02d', $year, $month, $day);
+    $dayOfWeek = (int)date('w', strtotime($date));
+    if ($dayOfWeek !== 0 && $dayOfWeek !== 6) {
+        $weekdaysInMonth++;
+    }
+}
 ?>
 <?php
 $page_title = $monthName . ' ' . $year . ' - ROMD Attendance';
@@ -304,30 +314,37 @@ include 'includes/header.php';
             }
             .nav-btn {
                 width: 100%;
-</head>
-<body>
-    <div class="header">
-        <div class="header-content">
-            <h1>ROMD Attendance System</h1>
-            <div class="user-info">
-                <span>Welcome, <strong><?php echo htmlspecialchars($username); ?></strong> (<?php echo htmlspecialchars($role); ?>)</span>
-                <a href="index.php" class="back-btn">← Back</a>
-                <a href="logout.php" class="logout-btn">Logout</a>
-            </div>
-        </div>
-    </div>
-    
             }
         }
     </style>
-    <div class="container">
+    <div class="container month-page dtr-month-page">
         <div class="month-header">
-            <h2><?php echo $monthName . ' ' . $year; ?></h2>
-            <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px; flex-wrap: wrap;">
-                <button class="add-employee-btn" onclick="openAddEmployeeModal()">+ Add Employee</button>
-                <button class="add-employee-btn" style="background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);" onclick="openResultsModal()">📊 Results</button>
+            <div class="month-hero">
+                <div class="month-hero-copy">
+                    <span class="month-eyebrow">DTR Attendance Month</span>
+                    <h2><?php echo htmlspecialchars($monthName . ' ' . $year); ?></h2>
+                    <p>Review and edit DTR-based attendance records separately from the main system attendance grid.</p>
+                </div>
+                <div class="month-hero-stats">
+                    <div class="month-stat">
+                        <strong><?php echo count($employees); ?></strong>
+                        <span>Employees</span>
+                    </div>
+                    <div class="month-stat">
+                        <strong><?php echo $daysInMonth; ?></strong>
+                        <span>Calendar Days</span>
+                    </div>
+                    <div class="month-stat">
+                        <strong><?php echo $weekdaysInMonth; ?></strong>
+                        <span>Weekdays</span>
+                    </div>
+                </div>
             </div>
-            <div class="navigation">
+            <div class="month-actions">
+                <button class="add-employee-btn" onclick="openAddEmployeeModal()">+ Add Employee</button>
+                <button class="add-employee-btn btn-results" onclick="openResultsModal()">View Results</button>
+            </div>
+            <div class="navigation month-navigation">
                 <?php
                 // Previous month
                 $prevMonth = $month - 1;
@@ -345,13 +362,25 @@ include 'includes/header.php';
                     $nextYear++;
                 }
                 ?>
-                <a href="month_dtr.php?month=<?php echo $prevMonth; ?>&year=<?php echo $prevYear; ?>" class="nav-btn">← Previous Month (DTR)</a>
-                <a href="index.php" class="nav-btn">Back to Dashboard</a>
-                <a href="month_dtr.php?month=<?php echo $nextMonth; ?>&year=<?php echo $nextYear; ?>" class="nav-btn">Next Month (DTR) →</a>
+                <a href="month_dtr.php?month=<?php echo $prevMonth; ?>&year=<?php echo $prevYear; ?>" class="nav-btn">Previous DTR</a>
+                <a href="index.php" class="nav-btn nav-btn-muted">Dashboard</a>
+                <a href="month_dtr.php?month=<?php echo $nextMonth; ?>&year=<?php echo $nextYear; ?>" class="nav-btn">Next DTR</a>
             </div>
         </div>
         
         <div class="attendance-table-container">
+            <div class="attendance-table-toolbar">
+                <div>
+                    <h3>DTR Attendance Grid</h3>
+                    <p>Use this grid for DTR records. Compare it with system time-ins from the DTR Difference report.</p>
+                </div>
+                <div class="attendance-legend">
+                    <span><i class="legend-dot present"></i> Present</span>
+                    <span><i class="legend-dot late"></i> Late</span>
+                    <span><i class="legend-dot absent"></i> Absent</span>
+                    <span><i class="legend-dot excused"></i> Offset / OB / Leave</span>
+                </div>
+            </div>
             <table class="attendance-table">
                 <thead>
                     <tr>
@@ -361,9 +390,10 @@ include 'includes/header.php';
                             $date = sprintf('%04d-%02d-%02d', $year, $month, $day);
                             $dayOfWeek = date('w', strtotime($date));
                             $dayName = $dayNames[$dayOfWeek];
-                            echo '<th>';
-                            echo '<div>' . $dayName . '</div>';
-                            echo '<div>' . $monthName . ' ' . $day . ', ' . $year . '</div>';
+                            $isWeekendHeader = ($dayOfWeek == 0 || $dayOfWeek == 6);
+                            echo '<th class="' . ($isWeekendHeader ? 'weekend-day-header' : '') . '">';
+                            echo '<div class="day-short">' . htmlspecialchars(substr($dayName, 0, 3)) . '</div>';
+                            echo '<div class="day-number">' . $day . '</div>';
                             echo '</th>';
                         }
                         ?>
@@ -411,6 +441,9 @@ include 'includes/header.php';
                                         } elseif ($attendance['status'] == 'leave') {
                                             $cell_class = 'status-leave';
                                             $cell_content = 'Leave';
+                                        } elseif ($attendance['status'] == 'ob') {
+                                            $cell_class = 'status-ob';
+                                            $cell_content = 'OB';
                                         } elseif ($attendance['status'] == 'holiday') {
                                             $cell_class = 'status-holiday';
                                             $cell_content = '';
@@ -466,52 +499,67 @@ include 'includes/header.php';
         }
         arsort($averages);
     ?>
-    <div class="grade-summary">
-        <h3>Monthly Grade Points (Average)</h3>
+    <div class="container month-page grade-summary-container">
+    <section class="grade-summary">
+        <div class="grade-summary-header">
+            <div>
+                <span class="month-eyebrow">DTR Performance Snapshot</span>
+                <h3>Monthly Grade Points (Average)</h3>
+                <p>Average points based on DTR attendance entries for <?php echo htmlspecialchars($monthName . ' ' . $year); ?>.</p>
+            </div>
+        </div>
+        <div class="grade-table-wrap">
         <table class="grade-table">
             <thead>
                 <tr>
-                    <th style="width: 60px;">#</th>
+                    <th class="rank-col">Rank</th>
                     <th>Employee Name</th>
-                    <th style="width: 150px; text-align: right;">Average Points</th>
+                    <th class="numeric-col">Average Points</th>
                 </tr>
             </thead>
             <tbody>
-                <?php 
+                <?php
                 $rank = 1;
-                foreach ($averages as $empId => $average): 
+                foreach ($averages as $empId => $average):
                     $employeeName = $employee_names[$empId] ?? 'Employee';
                 ?>
                 <tr>
-                    <td><?php echo $rank++; ?></td>
+                    <td><span class="grade-rank-badge"><?php echo $rank++; ?></span></td>
                     <td><?php echo htmlspecialchars($employeeName); ?></td>
-                    <td class="grade-points" style="text-align: right;"><?php echo number_format($average, 2); ?></td>
+                    <td class="grade-points numeric-col"><?php echo number_format($average, 2); ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
+    </section>
     </div>
     <?php endif; ?>
     
     <!-- Results Modal -->
-    <div id="resultsModal" class="modal">
-        <div class="modal-content" style="max-width: 95%; max-height: 90vh; overflow-y: auto;">
+    <div id="resultsModal" class="modal month-modal">
+        <div class="modal-content results-modal-content">
             <div class="modal-header">
-                <h3>Monthly Attendance Results - <?php echo $monthName . ' ' . $year; ?></h3>
+                <div>
+                    <span class="modal-kicker">DTR Monthly Report</span>
+                    <h3>DTR Attendance Results</h3>
+                    <p><?php echo htmlspecialchars($monthName . ' ' . $year); ?> DTR summary and printable report.</p>
+                </div>
                 <span class="close" onclick="closeResultsModal()">&times;</span>
             </div>
-            <div style="padding: 15px 0; border-bottom: 1px solid #e0e0e0; margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-                <button class="btn btn-primary" onclick="printResults()" style="flex: 1; min-width: 150px;">
-                    🖨️ Print Report
+            <div class="modal-body">
+            <div class="results-toolbar">
+                <button class="btn btn-primary" onclick="printResults()">
+                    Print Report
                 </button>
-                <input type="text" id="employeeSearch" placeholder="🔍 Search employee..." 
-                       style="flex: 2; min-width: 200px; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px;"
+                <input type="text" id="employeeSearch" placeholder="Search employee..."
                        onkeyup="filterEmployees()">
             </div>
-            <div id="resultsContent" style="padding: 20px 0;">
-                <div style="text-align: center; padding: 20px;">
+            <div id="resultsContent" class="results-content">
+                <div class="results-loading">
                     <p>Loading statistics...</p>
                 </div>
+            </div>
             </div>
         </div>
     </div>
@@ -522,24 +570,34 @@ include 'includes/header.php';
     </div>
     
     <!-- Add Employee Modal -->
-    <div id="addEmployeeModal" class="modal">
-        <div class="modal-content">
+    <div id="addEmployeeModal" class="modal month-modal">
+        <div class="modal-content add-employee-modal-content">
             <div class="modal-header">
-                <h3>Add New Employee</h3>
+                <div>
+                    <span class="modal-kicker">Employee Setup</span>
+                    <h3>Add New Employee</h3>
+                    <p>Create a new active employee record for DTR attendance views.</p>
+                </div>
                 <span class="close" onclick="closeAddEmployeeModal()">&times;</span>
             </div>
+            <div class="modal-body">
             <div id="addEmployeeMessage" class="message"></div>
             <form id="addEmployeeForm" onsubmit="addEmployee(event)">
                 <div class="form-group">
                     <label for="employeeName">Employee Name</label>
-                    <input type="text" id="employeeName" name="employee_name" required 
+                    <input type="text" id="employeeName" name="employee_name" required
                            placeholder="Enter employee full name">
+                    <p class="field-help">Use the full name as it should appear in DTR and comparison reports.</p>
+                </div>
+                <div class="modal-note">
+                    New employees will be available in both system and DTR attendance tools after saving.
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeAddEmployeeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary">Add Employee</button>
                 </div>
             </form>
+            </div>
         </div>
     </div>
     
@@ -1236,6 +1294,7 @@ include 'includes/header.php';
                 { value: 'absent', label: 'Absent' },
                 { value: 'offset', label: 'Offset' },
                 { value: 'leave', label: 'Leave' },
+                { value: 'ob', label: 'Official Business (OB)' },
                 { value: 'holiday', label: 'Holiday' },
                 { value: 'suspended', label: 'Suspended' }
             ];
@@ -1258,8 +1317,8 @@ include 'includes/header.php';
             // Auto-update status when time is entered
             const handleTimeChange = function() {
                 const timeValue = input.value;
-                // If time is entered and status is absent/offset/leave/clear, change to present
-                if (timeValue && ['absent', 'offset', 'leave', 'holiday', 'suspended', 'clear'].includes(select.value)) {
+                // If time is entered and status is absent/offset/leave/OB/clear, change to present
+                if (timeValue && ['absent', 'offset', 'leave', 'ob', 'holiday', 'suspended', 'clear'].includes(select.value)) {
                     select.value = 'present';
                 }
                 // Check if time is late (after 8:00 AM)
@@ -1277,7 +1336,7 @@ include 'includes/header.php';
             };
             input.onchange = handleTimeChange;
             input.oninput = function() {
-                if (!input.value && !['offset', 'leave', 'holiday', 'suspended'].includes(select.value)) {
+                if (!input.value && !['offset', 'leave', 'ob', 'holiday', 'suspended'].includes(select.value)) {
                     select.value = 'clear';
                 }
             };
@@ -1298,8 +1357,8 @@ include 'includes/header.php';
                     timeValue = '';
                     statusValue = 'clear';
                 } 
-                // Handle status options that don't require time (absent, offset, leave, holiday, suspended)
-                else if (statusValue === 'absent' || statusValue === 'offset' || statusValue === 'leave' || statusValue === 'holiday' || statusValue === 'suspended') {
+                // Handle status options that don't require time (absent, offset, leave, OB, holiday, suspended)
+                else if (statusValue === 'absent' || statusValue === 'offset' || statusValue === 'leave' || statusValue === 'ob' || statusValue === 'holiday' || statusValue === 'suspended') {
                     timeValue = '';
                     // Keep the selected status as-is - don't override it
                 }
@@ -1329,7 +1388,7 @@ include 'includes/header.php';
                 const value = select.value;
                 if (value === 'clear') {
                     input.value = '';
-                } else if (value === 'absent' || value === 'offset' || value === 'leave' || value === 'holiday' || value === 'suspended') {
+                } else if (value === 'absent' || value === 'offset' || value === 'leave' || value === 'ob' || value === 'holiday' || value === 'suspended') {
                     input.value = '';
                 }
                 // Save immediately when status is changed (for all status types)
@@ -1374,6 +1433,9 @@ include 'includes/header.php';
                     } else if (originalStatus === 'leave') {
                         cell.innerHTML = 'Leave';
                         cell.className = 'time-cell status-leave editable-cell';
+                    } else if (originalStatus === 'ob') {
+                        cell.innerHTML = 'OB';
+                        cell.className = 'time-cell status-ob editable-cell';
                     } else if (originalStatus === 'holiday') {
                         cell.innerHTML = '';
                         cell.className = 'time-cell status-holiday editable-cell';
@@ -1408,6 +1470,9 @@ include 'includes/header.php';
                     } else if (originalStatus === 'leave') {
                         cell.innerHTML = 'Leave';
                         cell.className = 'time-cell status-leave editable-cell';
+                    } else if (originalStatus === 'ob') {
+                        cell.innerHTML = 'OB';
+                        cell.className = 'time-cell status-ob editable-cell';
                     } else if (originalStatus === 'holiday') {
                         cell.innerHTML = '';
                         cell.className = 'time-cell status-holiday editable-cell';
@@ -1476,6 +1541,11 @@ include 'includes/header.php';
                         cell.setAttribute('data-status', 'leave');
                         cell.setAttribute('data-time', '');
                         cell.className = 'time-cell status-leave editable-cell';
+                    } else if (actualStatus === 'ob') {
+                        cell.innerHTML = 'OB';
+                        cell.setAttribute('data-status', 'ob');
+                        cell.setAttribute('data-time', '');
+                        cell.className = 'time-cell status-ob editable-cell';
                     } else if (actualStatus === 'holiday') {
                         cell.innerHTML = '';
                         cell.setAttribute('data-status', 'holiday');

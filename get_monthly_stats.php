@@ -7,13 +7,12 @@ header('Content-Type: application/json');
 // Function to calculate grade points based on arrival time and status
 // Optional $attendanceDate (Y-m-d) used to apply 2026+ time bands; before 2026 uses previous bands.
 function calculateGradePoints($status, $time, $attendanceDate = null) {
-    // Leave, Holiday, Suspended = 0 points (do not contribute to score)
     if ($status === 'leave' || $status === 'holiday' || $status === 'suspended') {
         return 0;
     }
-    // Offset = 5 points (equivalent to best on-time)
-    if ($status === 'offset') {
-        return 5;
+    // Offset and Official Business are equivalent to 3 points.
+    if ($status === 'offset' || $status === 'ob') {
+        return 3;
     }
     if ($status === 'absent' || empty($time) || $time === '00:00:00') {
         return 0;
@@ -92,6 +91,15 @@ if (!$use_range) {
 
 try {
     $conn = getDBConnection();
+
+    $conn->query("CREATE TABLE IF NOT EXISTS call_times (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        call_date DATE NOT NULL UNIQUE,
+        call_time TIME NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_call_date (call_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     
     // Check if attendance table exists, if not create it
     $table_check = $conn->query("SHOW TABLES LIKE 'attendance'");
@@ -103,7 +111,7 @@ try {
             attendance_date DATE NOT NULL,
             time_in TIME,
             time_out TIME,
-            status ENUM('present', 'absent', 'offset', 'leave', 'late', 'holiday', 'suspended') DEFAULT 'present',
+            status ENUM('present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended') DEFAULT 'present',
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -115,8 +123,8 @@ try {
         
         $conn->query($create_table_sql);
     } else {
-        // Ensure existing table has holiday and suspended in ENUM
-        @$conn->query("ALTER TABLE attendance MODIFY COLUMN status ENUM('present', 'absent', 'offset', 'leave', 'late', 'holiday', 'suspended') DEFAULT 'present'");
+        // Ensure existing table has all supported statuses in ENUM
+        @$conn->query("ALTER TABLE attendance MODIFY COLUMN status ENUM('present', 'absent', 'offset', 'leave', 'ob', 'late', 'holiday', 'suspended') DEFAULT 'present'");
     }
     
     // Get total employees
@@ -131,11 +139,18 @@ try {
     // Count as present: any record with time_in OR status = 'offset' (offset counts as present)
     // Count as absent: only status = 'absent' (blank records count as 0)
     $stats_query = "SELECT 
-        COUNT(CASE WHEN status = 'late' OR (time_in IS NOT NULL AND (HOUR(time_in) > 8 OR (HOUR(time_in) = 8 AND MINUTE(time_in) > 0))) THEN 1 END) as total_late,
-        COUNT(CASE WHEN status = 'absent' THEN 1 END) as total_absent,
-        COUNT(CASE WHEN (time_in IS NOT NULL AND time_in != '00:00:00' AND time_in != '') OR status = 'offset' THEN 1 END) as total_present
-        FROM attendance 
-        WHERE attendance_date >= ? AND attendance_date <= ?";
+        COUNT(CASE WHEN a.status = 'late' OR (
+            a.time_in IS NOT NULL
+            AND a.time_in != '00:00:00'
+            AND a.time_in != ''
+            AND TIME(a.time_in) > COALESCE(ct.call_time, '08:00:00')
+        ) THEN 1 END) as total_late,
+        COUNT(CASE WHEN a.status = 'absent' THEN 1 END) as total_absent,
+        COUNT(CASE WHEN a.status = 'ob' THEN 1 END) as total_ob,
+        COUNT(CASE WHEN (a.time_in IS NOT NULL AND a.time_in != '00:00:00' AND a.time_in != '') OR a.status = 'offset' THEN 1 END) as total_present
+        FROM attendance a
+        LEFT JOIN call_times ct ON ct.call_date = a.attendance_date
+        WHERE a.attendance_date >= ? AND a.attendance_date <= ?";
     
     $stmt = $conn->prepare($stats_query);
     $stmt->bind_param("ss", $start_date, $end_date);
@@ -145,6 +160,7 @@ try {
     
     $total_late = (int)$stats['total_late'];
     $total_absent = (int)$stats['total_absent'];
+    $total_ob = (int)$stats['total_ob'];
     $total_present = (int)$stats['total_present'];
     
     // Get late employees with counts
@@ -152,8 +168,14 @@ try {
     $late_query = "SELECT e.employee_name, COUNT(*) as late_count
                    FROM attendance a
                    JOIN employees e ON a.employee_id = e.id
+                   LEFT JOIN call_times ct ON ct.call_date = a.attendance_date
                    WHERE a.attendance_date >= ? AND a.attendance_date <= ?
-                   AND (a.status = 'late' OR (a.time_in IS NOT NULL AND (HOUR(a.time_in) > 8 OR (HOUR(a.time_in) = 8 AND MINUTE(a.time_in) > 0))))
+                   AND (a.status = 'late' OR (
+                        a.time_in IS NOT NULL
+                        AND a.time_in != '00:00:00'
+                        AND a.time_in != ''
+                        AND TIME(a.time_in) > COALESCE(ct.call_time, '08:00:00')
+                   ))
                    GROUP BY e.id, e.employee_name
                    ORDER BY late_count DESC, e.employee_name";
     
@@ -206,7 +228,8 @@ try {
         WHEN a.time_in IS NOT NULL 
         AND a.time_in != '00:00:00' 
         AND a.time_in != '' 
-        AND NOT (HOUR(a.time_in) > 8 OR (HOUR(a.time_in) = 8 AND MINUTE(a.time_in) > 0))
+        AND a.status != 'late'
+        AND NOT (TIME(a.time_in) > COALESCE(ct.call_time, '08:00:00'))
         THEN 1 
     END) as on_time_count,
 
@@ -214,12 +237,13 @@ try {
         WHEN a.time_in IS NOT NULL 
         AND a.time_in != '00:00:00' 
         AND a.time_in != '' 
-        AND (HOUR(a.time_in) > 8 OR (HOUR(a.time_in) = 8 AND MINUTE(a.time_in) > 0))
+        AND (a.status = 'late' OR TIME(a.time_in) > COALESCE(ct.call_time, '08:00:00'))
         THEN 1 
     END) as late_count,
 
     COUNT(CASE WHEN a.status = 'absent' THEN 1 END) as absent_count,
     COUNT(CASE WHEN a.status = 'offset' THEN 1 END) as offset_count,
+    COUNT(CASE WHEN a.status = 'ob' THEN 1 END) as ob_count,
     COUNT(CASE WHEN a.status = 'leave' THEN 1 END) as leave_count,
     COUNT(CASE WHEN a.status = 'holiday' THEN 1 END) as holiday_count,
     COUNT(CASE WHEN a.status = 'suspended' THEN 1 END) as suspended_count
@@ -229,6 +253,7 @@ try {
         ON e.id = a.employee_id 
         AND a.attendance_date >= ? 
         AND a.attendance_date <= ?
+    LEFT JOIN call_times ct ON ct.call_date = a.attendance_date
     WHERE e.status = 'active'
     GROUP BY e.id, e.employee_name
     ORDER BY e.employee_name";
@@ -245,6 +270,7 @@ try {
         $on_time = (int)$row['on_time_count']; // Includes offset (counted as present)
         $late = (int)$row['late_count'];
         $offset = (int)$row['offset_count'];
+        $ob = (int)$row['ob_count'];
         $absent = (int)$row['absent_count']; // Only explicit 'absent' status (blank = 0)
         // 4 lates = 1 absent (for reporting)
         $absent_from_lates = (int)floor($late / 4);
@@ -265,6 +291,7 @@ try {
             'remaining_tardiness' => $remaining_tardiness,
             'effective_absent' => $effective_absent,
             'offset' => $offset,
+            'ob' => $ob,
             'leave' => (int)$row['leave_count'],
             'holiday' => (int)$row['holiday_count'],
             'suspended' => (int)$row['suspended_count']
@@ -373,6 +400,7 @@ try {
         'total_employees' => $total_employees,
         'total_late' => $total_late,
         'total_absent' => $total_absent,
+        'total_ob' => $total_ob,
         'total_absent_from_lates' => $total_absent_from_lates,
         'total_effective_absent' => $total_effective_absent,
         'total_present' => $total_present,

@@ -18,11 +18,133 @@ $current_page = 'first_arrival';
 $show_back_btn = true;
 include 'includes/header.php';
 ?>
-    <div class="container">
+    <style>
+        .arrival-page .page-intro {
+            color: #64748b;
+            font-size: 14px;
+            line-height: 1.6;
+            margin: 0 0 18px;
+        }
+
+        .arrival-section-title {
+            color: #1e293b;
+            margin: 0 0 10px;
+        }
+
+        .arrival-muted {
+            color: #64748b;
+            font-size: 13px;
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        .arrival-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        .arrival-summary-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 18px;
+        }
+
+        .arrival-summary-card.primary {
+            border-color: #bfdbfe;
+            background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+        }
+
+        .arrival-summary-card.warning {
+            border-color: #fed7aa;
+            background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+        }
+
+        .arrival-summary-card.highlight {
+            border-color: #facc15;
+            box-shadow: 0 12px 28px rgba(250, 204, 21, 0.22);
+            background: linear-gradient(135deg, #fef9c3 0%, #ffffff 100%);
+        }
+
+        .arrival-summary-number {
+            color: #0f172a;
+            font-size: 32px;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+
+        .arrival-summary-label {
+            color: #334155;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .arrival-table-wrap {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            overflow-x: auto;
+        }
+
+        .arrival-table-wrap .summary-table {
+            margin: 0;
+        }
+
+        .arrival-table-wrap .summary-table th {
+            white-space: nowrap;
+        }
+
+        .arrival-rank-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 34px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: #e0f2fe;
+            color: #075985;
+            font-weight: 700;
+        }
+
+        .arrival-time {
+            font-weight: 700;
+            color: #0f172a;
+            white-space: nowrap;
+        }
+
+        .arrival-name-list {
+            color: #1e293b;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        .arrival-subsection {
+            margin-top: 28px;
+        }
+
+        .arrival-streak-highlight {
+            background: linear-gradient(135deg, #fef9c3 0%, #ffffff 100%);
+        }
+
+        .arrival-streak-label {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            background: #facc15;
+            color: #713f12;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+    </style>
+    <div class="container arrival-page">
         <div class="card no-print">
             <h2>First to Arrive — Monthly Report</h2>
-            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                For each day, this report shows both the employee(s) with the <strong>earliest time-in</strong> and the employee(s) with the <strong>latest time-in</strong> among those with recorded time-in entries. If two or more employees share the same earliest or latest time, they all count for that day.
+            <p class="page-intro">
+                Shows the earliest and latest recorded time-in per day. If employees have the same earliest or latest time, they are counted together for that day.
             </p>
             <div class="controls" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
                 <label for="reportMonth">Month:</label>
@@ -41,10 +163,14 @@ include 'includes/header.php';
             </div>
         </div>
 
+        <div id="reportContent" class="card" style="margin-top: 20px;">
+            <div class="message">Select month and year, then click "Load Report".</div>
+        </div>
+
         <!-- Overall / As of today ranking -->
         <div id="overallRanking" class="card" style="margin-top: 20px;">
-            <h3 style="color: var(--primary); margin-bottom: 8px;">Ranking — Overall / As of today</h3>
-            <p style="color: #666; font-size: 14px; margin-bottom: 12px;">Cumulative count of days each person was first to arrive and last to arrive among checked-in employees.</p>
+            <h3 class="arrival-section-title">Overall Ranking</h3>
+            <p class="arrival-muted" style="margin-bottom: 14px;">Cumulative count of days each person was first or last to arrive among employees with recorded time-in entries.</p>
             <div class="controls" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px;">
                 <label for="overallYear">Year:</label>
                 <select id="overallYear">
@@ -56,10 +182,6 @@ include 'includes/header.php';
                 <button type="button" class="btn btn-primary btn-sm" id="btnLoadOverall">Apply</button>
             </div>
             <div id="overallRankingContent"><div class="message loading">Loading overall ranking...</div></div>
-        </div>
-
-        <div id="reportContent" class="card" style="margin-top: 20px;">
-            <div class="message">Select month and year, then click "Load Report".</div>
         </div>
     </div>
 
@@ -89,62 +211,68 @@ include 'includes/header.php';
         function renderOverallRanking(data, contentDiv) {
             const ranking = data.ranking || [];
             const lastRanking = data.last_ranking || [];
+            const streakTop5 = data.streak_top5 || [];
             const asOfDate = data.as_of_date || '';
             const asOfStr = asOfDate ? new Date(asOfDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
             const filterLabel = data.filter_label || '';
 
             let html = '';
             if (filterLabel) {
-                html += '<p style="font-size: 13px; color: #64748b; margin-bottom: 8px;">' + (filterLabel === 'all time' ? 'All time' : 'Year ' + escapeHtml(filterLabel)) + (asOfStr ? ' · As of ' + escapeHtml(asOfStr) : '') + '</p>';
+                html += '<p class="arrival-muted" style="margin-bottom: 14px;">' + (filterLabel === 'all time' ? 'All time' : 'Year ' + escapeHtml(filterLabel)) + (asOfStr ? ' | As of ' + escapeHtml(asOfStr) : '') + '</p>';
             } else if (asOfStr) {
-                html += '<p style="font-size: 13px; color: #64748b; margin-bottom: 12px;">As of ' + escapeHtml(asOfStr) + '</p>';
+                html += '<p class="arrival-muted" style="margin-bottom: 14px;">As of ' + escapeHtml(asOfStr) + '</p>';
             }
+
             if (ranking.length > 0 || lastRanking.length > 0) {
-                html += '<div style="display: grid; gap: 24px;">';
+                html += '<div class="arrival-grid">';
 
                 html += '<div>';
-                html += '<h4 style="margin-bottom: 12px; color: #334155;">Overall first to arrive</h4>';
+                html += '<h4 class="arrival-section-title">Most Days First to Arrive</h4>';
                 if (ranking.length > 0) {
-                    html += '<div style="overflow-x: auto;"><table class="summary-table">';
-                    html += '<thead><tr><th class="text-left">Rank</th><th class="text-left">Employee</th><th>Days first to arrive</th></tr></thead><tbody>';
+                    html += '<div class="arrival-table-wrap"><table class="summary-table">';
+                    html += '<thead><tr><th>Rank</th><th class="text-left">Employee</th><th>Days</th></tr></thead><tbody>';
                     ranking.forEach(function(emp, i) {
                         const rank = i + 1;
-                        const medal = rank === 1 ? ' 🥇' : (rank === 2 ? ' 🥈' : (rank === 3 ? ' 🥉' : ''));
                         html += '<tr>';
-                        html += '<td class="text-left"><strong>' + rank + medal + '</strong></td>';
+                        html += '<td><span class="arrival-rank-badge">#' + rank + '</span></td>';
                         html += '<td class="text-left">' + escapeHtml(emp.employee_name || '') + '</td>';
                         html += '<td>' + (emp.days_first_count || 0) + '</td>';
                         html += '</tr>';
                     });
                     html += '</tbody></table></div>';
                 } else {
-                    html += '<p style="color: #666;">No first-arrival data yet.</p>';
+                    html += '<p class="arrival-muted">No first-arrival data yet.</p>';
                 }
                 html += '</div>';
 
                 html += '<div>';
-                html += '<h4 style="margin-bottom: 12px; color: #334155;">Overall last to arrive</h4>';
+                html += '<h4 class="arrival-section-title">Most Days Last to Arrive</h4>';
                 if (lastRanking.length > 0) {
-                    html += '<div style="overflow-x: auto;"><table class="summary-table">';
-                    html += '<thead><tr><th class="text-left">Rank</th><th class="text-left">Employee</th><th>Days last to arrive</th></tr></thead><tbody>';
+                    html += '<div class="arrival-table-wrap"><table class="summary-table">';
+                    html += '<thead><tr><th>Rank</th><th class="text-left">Employee</th><th>Days</th></tr></thead><tbody>';
                     lastRanking.forEach(function(emp, i) {
                         const rank = i + 1;
-                        const medal = rank === 1 ? ' 🥇' : (rank === 2 ? ' 🥈' : (rank === 3 ? ' 🥉' : ''));
                         html += '<tr>';
-                        html += '<td class="text-left"><strong>' + rank + medal + '</strong></td>';
+                        html += '<td><span class="arrival-rank-badge">#' + rank + '</span></td>';
                         html += '<td class="text-left">' + escapeHtml(emp.employee_name || '') + '</td>';
                         html += '<td>' + (emp.days_last_count || 0) + '</td>';
                         html += '</tr>';
                     });
                     html += '</tbody></table></div>';
                 } else {
-                    html += '<p style="color: #666;">No last-arrival data yet.</p>';
+                    html += '<p class="arrival-muted">No last-arrival data yet.</p>';
                 }
                 html += '</div>';
 
                 html += '</div>';
             } else {
-                html += '<p style="color: #666;">No data yet.</p>';
+                html += '<p class="arrival-muted">No data yet.</p>';
+            }
+
+            if (streakTop5.length > 0) {
+                html += '<div class="arrival-subsection">';
+                html += renderStreakTable('Top 5 Early Bird Streaks', streakTop5);
+                html += '</div>';
             }
             contentDiv.innerHTML = html;
         }
@@ -175,113 +303,140 @@ include 'includes/header.php';
             const days = data.days || [];
             const employeeTotals = data.employee_totals || [];
             const lastEmployeeTotals = data.last_employee_totals || [];
+            const streakTop5 = data.streak_top5 || [];
 
             let html = '<div style="margin-bottom: 24px;">';
-            html += '<h3 style="color: var(--primary); margin-bottom: 8px;">' + escapeHtml(monthName) + ' ' + year + '</h3>';
-            html += '<p style="color: #666; font-size: 14px;">Per day: the report shows both the earliest and latest recorded time-in among employees who checked in. Ties (same time) all count.</p>';
+            html += '<h3 class="arrival-section-title">' + escapeHtml(monthName) + ' ' + year + '</h3>';
+            html += '<p class="arrival-muted">Daily breakdown and employee rankings for the selected month. Ties with the same time are counted together.</p>';
             html += '</div>';
 
-            // Summary: total "first to arrive" credits (one per day, or sum of count per day)
             const totalCredits = days.reduce((sum, d) => sum + (d.count || 0), 0);
             const totalLastCredits = days.reduce((sum, d) => sum + (d.last_count || 0), 0);
-            html += '<div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">';
-            html += '<div class="stat-card success" style="max-width: 320px; margin-bottom: 24px; padding: 20px;">';
-            html += '<div class="stat-number" style="font-size: 2rem;">' + totalCredits + '</div>';
-            html += '<div class="stat-label">Total "First to Arrive" count this month</div>';
-            html += '<p style="margin-top: 8px; font-size: 13px; color: #666;">Sum of counts per day (each day: only earliest time-in person(s) counted)</p>';
+            const daysWithTimeIn = days.length;
+            html += '<div class="arrival-grid" style="margin-bottom: 28px;">';
+            html += '<div class="arrival-summary-card primary">';
+            html += '<div class="arrival-summary-number">' + totalCredits + '</div>';
+            html += '<div class="arrival-summary-label">First Arrival Credits</div>';
+            html += '<p class="arrival-muted">Total employees counted as earliest for the month.</p>';
             html += '</div>';
-            html += '<div class="stat-card" style="max-width: 320px; margin-bottom: 24px; padding: 20px;">';
-            html += '<div class="stat-number" style="font-size: 2rem;">' + totalLastCredits + '</div>';
-            html += '<div class="stat-label">Total "Last to Arrive" count this month</div>';
-            html += '<p style="margin-top: 8px; font-size: 13px; color: #666;">Sum of counts per day (each day: only latest time-in person(s) counted)</p>';
+            html += '<div class="arrival-summary-card warning">';
+            html += '<div class="arrival-summary-number">' + totalLastCredits + '</div>';
+            html += '<div class="arrival-summary-label">Last Arrival Credits</div>';
+            html += '<p class="arrival-muted">Total employees counted as latest for the month.</p>';
+            html += '</div>';
+            html += '<div class="arrival-summary-card">';
+            html += '<div class="arrival-summary-number">' + daysWithTimeIn + '</div>';
+            html += '<div class="arrival-summary-label">Days With Time-In</div>';
+            html += '<p class="arrival-muted">Days with at least one recorded employee time-in.</p>';
             html += '</div>';
             html += '</div>';
 
-            // Table 1: By date — Date | Day | First to arrive (names) | Time | Count
-            html += '<h4 style="margin-bottom: 12px; color: #334155;">By date — Who was first to arrive</h4>';
+            if (streakTop5.length > 0) {
+                const longest = streakTop5[0];
+                html += '<div class="arrival-summary-card highlight" style="margin-bottom: 28px;">';
+                html += '<div class="arrival-streak-label">Longest Early Bird Streak</div>';
+                html += '<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 12px;">';
+                html += '<div>';
+                html += '<div class="arrival-summary-number">' + (longest.longest_streak || 0) + '</div>';
+                html += '<div class="arrival-summary-label">' + escapeHtml(longest.employee_name || '') + '</div>';
+                html += '<p class="arrival-muted">' + formatDateRange(longest.start_date, longest.end_date) + '</p>';
+                html += '</div>';
+                html += '<p class="arrival-muted">Sunod-sunod na days na siya ang earliest recorded time-in.</p>';
+                html += '</div>';
+                html += '</div>';
+            }
+
+            html += '<div class="arrival-grid arrival-subsection">';
+            html += renderEmployeeRanking('First Arrival Ranking', employeeTotals, 'days_first_count');
+            html += renderEmployeeRanking('Last Arrival Ranking', lastEmployeeTotals, 'days_last_count');
+            html += '</div>';
+
+            if (streakTop5.length > 0) {
+                html += '<div class="arrival-subsection">';
+                html += renderStreakTable('Top 5 Early Bird Streaks', streakTop5);
+                html += '</div>';
+            }
+
+            html += '<div class="arrival-subsection">';
+            html += '<h4 class="arrival-section-title">Daily Breakdown</h4>';
             if (days.length > 0) {
-                html += '<div style="overflow-x: auto; margin-bottom: 32px;"><table class="summary-table">';
-                html += '<thead><tr><th class="text-left">Date</th><th class="text-left">Day</th><th class="text-left">First to arrive</th><th>Time In</th><th>Count</th></tr></thead><tbody>';
+                html += '<div class="arrival-table-wrap"><table class="summary-table">';
+                html += '<thead><tr><th class="text-left">Date</th><th class="text-left">Day</th><th class="text-left">First to Arrive</th><th>First Time</th><th class="text-left">Last to Arrive</th><th>Last Time</th></tr></thead><tbody>';
                 days.forEach(function(d) {
                     const dateObj = new Date(d.date + 'T12:00:00');
                     const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-                    const names = (d.first_arrivers || []).map(function(fa) { return fa.employee_name; }).join(', ');
-                    const time = d.earliest_time || '—';
-                    const count = d.count || 0;
+                    const firstNames = (d.first_arrivers || []).map(function(fa) { return fa.employee_name; }).join(', ');
+                    const lastNames = (d.last_arrivers || []).map(function(la) { return la.employee_name; }).join(', ');
                     html += '<tr>';
                     html += '<td class="text-left">' + escapeHtml(dateStr) + '</td>';
                     html += '<td class="text-left">' + escapeHtml(dayName) + '</td>';
-                    html += '<td class="text-left">' + (names ? escapeHtml(names) : '—') + '</td>';
-                    html += '<td>' + escapeHtml(time) + '</td>';
-                    html += '<td>' + count + '</td>';
+                    html += '<td class="text-left"><div class="arrival-name-list">' + (firstNames ? escapeHtml(firstNames) : '—') + '</div></td>';
+                    html += '<td><span class="arrival-time">' + escapeHtml(d.earliest_time || '—') + '</span></td>';
+                    html += '<td class="text-left"><div class="arrival-name-list">' + (lastNames ? escapeHtml(lastNames) : '—') + '</div></td>';
+                    html += '<td><span class="arrival-time">' + escapeHtml(d.latest_time || '—') + '</span></td>';
                     html += '</tr>';
                 });
                 html += '</tbody></table></div>';
             } else {
-                html += '<p style="color: #666; margin-bottom: 32px;">No attendance with time-in for this month.</p>';
+                html += '<p class="arrival-muted">No attendance with time-in for this month.</p>';
             }
-
-            // Table 2: By date — Date | Day | Last to arrive (names) | Time | Count
-            html += '<h4 style="margin-bottom: 12px; color: #334155;">By date — Who was last to arrive</h4>';
-            if (days.length > 0) {
-                html += '<div style="overflow-x: auto; margin-bottom: 32px;"><table class="summary-table">';
-                html += '<thead><tr><th class="text-left">Date</th><th class="text-left">Day</th><th class="text-left">Last to arrive</th><th>Time In</th><th>Count</th></tr></thead><tbody>';
-                days.forEach(function(d) {
-                    const dateObj = new Date(d.date + 'T12:00:00');
-                    const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-                    const names = (d.last_arrivers || []).map(function(la) { return la.employee_name; }).join(', ');
-                    const time = d.latest_time || '—';
-                    const count = d.last_count || 0;
-                    html += '<tr>';
-                    html += '<td class="text-left">' + escapeHtml(dateStr) + '</td>';
-                    html += '<td class="text-left">' + escapeHtml(dayName) + '</td>';
-                    html += '<td class="text-left">' + (names ? escapeHtml(names) : '—') + '</td>';
-                    html += '<td>' + escapeHtml(time) + '</td>';
-                    html += '<td>' + count + '</td>';
-                    html += '</tr>';
-                });
-                html += '</tbody></table></div>';
-            } else {
-                html += '<p style="color: #666; margin-bottom: 32px;">No attendance with time-in for this month.</p>';
-            }
-
-            // Table 3: By employee — Employee | # of days first to arrive
-            html += '<h4 style="margin-bottom: 12px; color: #334155;">By employee — Number of days they were first to arrive</h4>';
-            if (employeeTotals.length > 0) {
-                html += '<div style="overflow-x: auto;"><table class="summary-table">';
-                html += '<thead><tr><th class="text-left">#</th><th class="text-left">Employee</th><th>Days first to arrive</th></tr></thead><tbody>';
-                employeeTotals.forEach(function(emp, i) {
-                    html += '<tr>';
-                    html += '<td class="text-left">' + (i + 1) + '</td>';
-                    html += '<td class="text-left">' + escapeHtml(emp.employee_name || '') + '</td>';
-                    html += '<td>' + (emp.days_first_count || 0) + '</td>';
-                    html += '</tr>';
-                });
-                html += '</tbody></table></div>';
-            } else {
-                html += '<p style="color: #666; margin-bottom: 32px;">No data.</p>';
-            }
-
-            // Table 4: By employee — Employee | # of days last to arrive
-            html += '<h4 style="margin-bottom: 12px; color: #334155;">By employee — Number of days they were last to arrive</h4>';
-            if (lastEmployeeTotals.length > 0) {
-                html += '<div style="overflow-x: auto;"><table class="summary-table">';
-                html += '<thead><tr><th class="text-left">#</th><th class="text-left">Employee</th><th>Days last to arrive</th></tr></thead><tbody>';
-                lastEmployeeTotals.forEach(function(emp, i) {
-                    html += '<tr>';
-                    html += '<td class="text-left">' + (i + 1) + '</td>';
-                    html += '<td class="text-left">' + escapeHtml(emp.employee_name || '') + '</td>';
-                    html += '<td>' + (emp.days_last_count || 0) + '</td>';
-                    html += '</tr>';
-                });
-                html += '</tbody></table></div>';
-            } else {
-                html += '<p style="color: #666;">No data.</p>';
-            }
+            html += '</div>';
 
             contentDiv.innerHTML = html;
+        }
+
+        function renderEmployeeRanking(title, employees, countKey) {
+            let html = '<div>';
+            html += '<h4 class="arrival-section-title">' + escapeHtml(title) + '</h4>';
+            if (employees.length > 0) {
+                html += '<div class="arrival-table-wrap"><table class="summary-table">';
+                html += '<thead><tr><th>Rank</th><th class="text-left">Employee</th><th>Days</th></tr></thead><tbody>';
+                employees.forEach(function(emp, i) {
+                    html += '<tr>';
+                    html += '<td><span class="arrival-rank-badge">#' + (i + 1) + '</span></td>';
+                    html += '<td class="text-left">' + escapeHtml(emp.employee_name || '') + '</td>';
+                    html += '<td>' + (emp[countKey] || 0) + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table></div>';
+            } else {
+                html += '<p class="arrival-muted">No data.</p>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function renderStreakTable(title, streaks) {
+            let html = '<div>';
+            html += '<h4 class="arrival-section-title">' + escapeHtml(title) + '</h4>';
+            html += '<div class="arrival-table-wrap"><table class="summary-table">';
+            html += '<thead><tr><th>Rank</th><th class="text-left">Employee</th><th>Longest Streak</th><th class="text-left">Date Range</th><th>Total First Days</th></tr></thead><tbody>';
+            streaks.forEach(function(item, index) {
+                const isLongest = index === 0;
+                html += '<tr class="' + (isLongest ? 'arrival-streak-highlight' : '') + '">';
+                html += '<td><span class="arrival-rank-badge">#' + (index + 1) + '</span></td>';
+                html += '<td class="text-left">' + (isLongest ? '<span class="arrival-streak-label" style="margin-right: 8px;">Longest</span>' : '') + escapeHtml(item.employee_name || '') + '</td>';
+                html += '<td><strong>' + (item.longest_streak || 0) + '</strong></td>';
+                html += '<td class="text-left">' + escapeHtml(formatDateRange(item.start_date, item.end_date)) + '</td>';
+                html += '<td>' + (item.days_first_count || 0) + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            html += '</div>';
+            return html;
+        }
+
+        function formatDateRange(startDate, endDate) {
+            if (!startDate && !endDate) return '';
+            const start = startDate ? formatShortDate(startDate) : '';
+            const end = endDate ? formatShortDate(endDate) : '';
+            return start === end ? start : start + ' - ' + end;
+        }
+
+        function formatShortDate(dateStr) {
+            const dateObj = new Date(dateStr + 'T12:00:00');
+            return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         }
 
         function escapeHtml(text) {
