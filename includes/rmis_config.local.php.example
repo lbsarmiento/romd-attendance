@@ -1,0 +1,25 @@
+<?php
+/**
+ * Copy this file to rmis_config.local.php and fill in your TESDA intranet credentials.
+ * rmis_config.local.php should not be committed to version control.
+ */
+return [
+    'base_url' => 'https://intranet.tesda.gov.ph',
+    'email' => 'your.name@tesda.gov.ph',
+    'password' => 'your-password',
+    // Optional: protect rmis_cron.php when called over HTTP
+    'cron_secret' => 'change-me-to-a-long-random-string',
+    // Pause between page requests (microseconds) to reduce load on intranet
+    'request_delay_us' => 250000,
+    // If true, force IPv4 (helps when IPv6 routes are broken)
+    'curl_ipv4_only' => false,
+    // Keep true unless corporate SSL inspection breaks verification (less secure)
+    'verify_ssl' => true,
+    // Optional corporate HTTP proxy, e.g. http://proxy.example.gov.ph:8080
+    'http_proxy' => '',
+    // Use HTTP/2 when libcurl supports it (like Firefox). Set false to force HTTP/1.1.
+    'curl_http2' => true,
+    // Windows/XAMPP: fixes cURL error 60 without disabling TLS (requires PHP 8.2+).
+    'curl_use_native_ca' => true,
+    // Optional: absolute path to cacert.pem from https://curl.se/ca/cacert.pem
+    'ca_bundle' => '',
