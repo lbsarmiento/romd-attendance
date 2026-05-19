@@ -2314,3 +2314,236 @@
             padding: 14px var(--page-gutter-mobile);
         }
     }
+
+/* RMIS document monitor */
+.rmis-docs-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+}
+
+.rmis-docs-toolbar .form-group {
+    flex: 1 1 220px;
+    min-width: 180px;
+    margin: 0;
+}
+
+.rmis-docs-toolbar label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 4px;
+}
+
+.rmis-docs-toolbar input,
+.rmis-docs-toolbar select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+.rmis-docs-meta {
+    font-size: 0.9rem;
+    color: #64748b;
+    margin-bottom: 12px;
+}
+
+.rmis-docs-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+
+.rmis-docs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.rmis-docs-table th,
+.rmis-docs-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    text-align: left;
+    vertical-align: top;
+}
+
+.rmis-docs-table th {
+    background: #f8fafc;
+    font-weight: 600;
+    color: #334155;
+    white-space: nowrap;
+}
+
+.rmis-docs-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+.rmis-docs-table .col-origin {
+    min-width: 220px;
+    max-width: 420px;
+}
+
+.rmis-docs-table .col-origin strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.rmis-docs-table .col-origin em {
+    color: #64748b;
+    font-style: normal;
+    line-height: 1.4;
+}
+
+.rmis-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.rmis-pagination-pages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.rmis-pagination-pages button,
+.rmis-pagination-pages span {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.rmis-pagination-pages button:hover:not(:disabled) {
+    border-color: #3b82f6;
+    color: #1d4ed8;
+}
+
+.rmis-pagination-pages button.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+}
+
+.rmis-pagination-pages button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.rmis-pagination-pages .ellipsis {
+    border: none;
+    background: transparent;
+    cursor: default;
+    min-width: auto;
+    padding: 0 4px;
+}
+
+.rmis-docs-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: #64748b;
+}
+
+.rmis-pdf-btn {
+    white-space: nowrap;
+}
+
+.rmis-page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.rmis-page-header h2 {
+    margin: 0;
+}
+
+.rmis-page-header p {
+    margin: 4px 0 0;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.rmis-action-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.rmis-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 8px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    color: #334155;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.rmis-icon-btn:hover {
+    border-color: #3b82f6;
+    color: #1d4ed8;
+    background: #f8fafc;
+}
+
+.rmis-icon-btn.primary {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    border-color: transparent;
+    color: #fff;
+}
+
+.rmis-icon-btn.primary:hover {
+    color: #fff;
+    filter: brightness(1.05);
+}
+
+.rmis-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1e40af;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.rmis-sync-hint {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin: 0 0 12px;
+    line-height: 1.5;
+}
+
+.rmis-modal-note {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-top: 12px;
+}

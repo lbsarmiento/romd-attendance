@@ -215,6 +215,13 @@ include 'includes/header.php';
                                 <small>Upload attendance spreadsheet</small>
                             </span>
                         </a>
+                        <a href="rmis_monitor.php" class="shortcut-card">
+                            <span class="shortcut-icon">📄</span>
+                            <span>
+                                <strong>RMIS Monitor</strong>
+                                <small>Sync TESDA wRMIS documents</small>
+                            </span>
+                        </a>
                         <a href="admin_config.php" class="shortcut-card">
                             <span class="shortcut-icon">⚙</span>
                             <span>
